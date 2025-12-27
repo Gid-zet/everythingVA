@@ -35,26 +35,74 @@ export const GET = async (req: NextRequest) => {
     const expiresIn = token.expiresIn || 3600; // Default to 1 hour
     const tokenExpiresAt = new Date(Date.now() + expiresIn * 1000);
 
-    await db.account.upsert({
-      where: { id: token.accountId.toString() },
-      create: {
-        id: token.accountId.toString(),
+    // First, try to find an existing account by email address for this user
+    // This handles re-authorization by updating the existing account instead of creating a new one
+    const existingAccount = await db.account.findFirst({
+      where: {
         userId,
-        token: token.accessToken,
-        refreshToken: token.refreshToken || null,
-        tokenExpiresAt,
-        provider: "Aurinko",
         emailAddress: accountDetails.email,
-        name: accountDetails.name,
-      },
-      update: {
-        token: token.accessToken,
-        refreshToken: token.refreshToken || undefined,
-        tokenExpiresAt,
       },
     });
+
+    let accountId: string;
+    
+    if (existingAccount) {
+      // Update existing account with new tokens (re-authorization)
+      try {
+        await db.account.update({
+          where: { id: existingAccount.id },
+          data: {
+            token: token.accessToken,
+            refreshToken: token.refreshToken || null,
+            tokenExpiresAt,
+            name: accountDetails.name, // Update name in case it changed
+            nextDeltaToken: null, // Clear old delta token - it's invalid after re-authorization
+          },
+        });
+        accountId = existingAccount.id;
+        console.log(`Updated existing account ${accountId} for email ${accountDetails.email} (cleared delta token for fresh sync)`);
+      } catch (updateError: any) {
+        // If update fails due to unique constraint on token (unlikely but possible),
+        // delete the old account and create a new one
+        if (updateError?.code === 'P2002' && updateError?.meta?.target?.includes('token')) {
+          console.warn("Token conflict detected, recreating account");
+          await db.account.delete({ where: { id: existingAccount.id } });
+          const newAccount = await db.account.create({
+            data: {
+              id: token.accountId.toString(),
+              userId,
+              token: token.accessToken,
+              refreshToken: token.refreshToken || null,
+              tokenExpiresAt,
+              provider: "Aurinko",
+              emailAddress: accountDetails.email,
+              name: accountDetails.name,
+            },
+          });
+          accountId = newAccount.id;
+        } else {
+          throw updateError;
+        }
+      }
+    } else {
+      // Create new account if it doesn't exist
+      const newAccount = await db.account.create({
+        data: {
+          id: token.accountId.toString(),
+          userId,
+          token: token.accessToken,
+          refreshToken: token.refreshToken || null,
+          tokenExpiresAt,
+          provider: "Aurinko",
+          emailAddress: accountDetails.email,
+          name: accountDetails.name,
+        },
+      });
+      accountId = newAccount.id;
+      console.log(`Created new account ${accountId} for email ${accountDetails.email}`);
+    }
     waitUntil(
-      performInitialSync(userId, token.accountId.toString())
+      performInitialSync(userId, accountId)
         .then((result) => {
           console.log("Initial sync result: success");
         })

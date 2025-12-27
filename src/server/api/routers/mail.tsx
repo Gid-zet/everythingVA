@@ -845,12 +845,52 @@ export const mailRouter = createTRPCRouter({
             errorCount: 0,
             errors: ["Account needs re-authorization. Please re-authorize your email account before pushing categories."],
             needsReauth: true,
+            needsResync: false,
           };
         }
       }
 
-      // Get all emails with categories for this account
-      const emails = await ctx.db.email.findMany({
+      // Step 1: Get ALL categories for this user (not just those with emails)
+      const allCategories = await ctx.db.emailCategory.findMany({
+        where: {
+          userId: ctx.auth.id,
+        },
+        orderBy: {
+          name: "asc",
+        },
+      });
+
+      if (allCategories.length === 0) {
+        return {
+          success: true,
+          processedCount: 0,
+          successCount: 0,
+          errorCount: 0,
+          errors: undefined,
+          needsReauth: false,
+        };
+      }
+
+      // Step 2: Get any email from this account to use for label creation
+      // (Labels are created when assigned to emails, so we need at least one email)
+      // Try to find a recent email that's likely to still exist in the provider
+      const anyEmail = await ctx.db.email.findFirst({
+        where: {
+          thread: {
+            accountId: account.id,
+          },
+        },
+        orderBy: {
+          receivedAt: "desc",
+        },
+      });
+      
+      // Track if we're getting too many 404s (indicates emails need re-syncing)
+      let emailNotFoundCount = 0;
+      const maxNotFoundBeforeWarning = 5;
+
+      // Step 3: Get all emails with categories for this account, grouped by category
+      const categorizedEmails = await ctx.db.email.findMany({
         where: {
           thread: {
             accountId: account.id,
@@ -864,71 +904,259 @@ export const mailRouter = createTRPCRouter({
         },
       });
 
+      // Group emails by category for better organization
+      const emailsByCategory = new Map<string, typeof categorizedEmails>();
+      for (const email of categorizedEmails) {
+        if (!email.category) continue;
+        const categoryName = email.category.name;
+        if (!emailsByCategory.has(categoryName)) {
+          emailsByCategory.set(categoryName, []);
+        }
+        emailsByCategory.get(categoryName)!.push(email);
+      }
+
       let successCount = 0;
       let errorCount = 0;
       const errors: string[] = [];
       let hasAuthError = false;
+      const createdLabels = new Set<string>();
+      let labelsCreatedCount = 0;
 
-      // Process emails in batches to avoid overwhelming the API
-      const batchSize = 10;
-      for (let i = 0; i < emails.length; i += batchSize) {
-        const batch = emails.slice(i, i + batchSize);
-        
-        await Promise.all(
-          batch.map(async (email) => {
-            if (!email.category) return;
+      // Step 4: Create labels in provider for ALL categories
+      // (Labels are automatically created in Gmail/Office365 when assigned to emails)
+      if (anyEmail) {
+        for (const category of allCategories) {
+          if (createdLabels.has(category.name)) continue;
+
+          try {
+            // Use any email to create the label (labels are created when first assigned)
+            const existingLabels = anyEmail.keywords || [];
+            const labelsToPush = existingLabels.includes(category.name)
+              ? existingLabels
+              : [...existingLabels, category.name];
             
-            try {
-              // Get existing labels and add category name if not already present
-              const existingLabels = email.keywords || [];
-              const categoryLabel = email.category.name;
+            await syncEmailOrganizationToProvider({
+              accountId: account.id,
+              emailProviderId: anyEmail.id,
+              customLabels: labelsToPush,
+            });
+            
+            // Update database for the email used to create the label
+            await ctx.db.email.update({
+              where: { id: anyEmail.id },
+              data: {
+                keywords: labelsToPush,
+                customLabels: labelsToPush,
+              },
+            });
+            
+            createdLabels.add(category.name);
+            labelsCreatedCount++;
+            console.log(`Created label "${category.name}" in email provider`);
+          } catch (createError: any) {
+            if (createError instanceof Error && createError.message.includes("No valid provider token")) {
+              hasAuthError = true;
+              break; // Stop processing if auth fails
+            } else if (
+              createError?.response?.status === 404 ||
+              (createError instanceof Error && createError.message.includes("Email not found in provider"))
+            ) {
+              emailNotFoundCount++;
+              console.log(`Email ${anyEmail.id} not found in provider, skipping label creation for "${category.name}"`);
               
-              // Only add if not already present
-              if (!existingLabels.includes(categoryLabel)) {
-                const updatedLabels = [...existingLabels, categoryLabel];
-                
-                // Update the email in database with new labels
-                await ctx.db.email.update({
-                  where: { id: email.id },
-                  data: {
-                    keywords: updatedLabels,
-                    customLabels: updatedLabels,
-                  },
-                });
-              }
-
-              // Try to push to email provider (update DB first so data is consistent)
-              try {
-                const labelsToPush = existingLabels.includes(categoryLabel) 
-                  ? existingLabels 
-                  : [...existingLabels, categoryLabel];
-                
-                await syncEmailOrganizationToProvider({
-                  accountId: account.id,
-                  emailProviderId: email.id,
-                  customLabels: labelsToPush,
-                });
-                successCount++;
-              } catch (syncError) {
-                // If it's an auth error, mark it but don't log every single one
-                if (syncError instanceof Error && syncError.message.includes("No valid provider token")) {
-                  hasAuthError = true;
-                } else {
-                  const errorMessage = `Failed to push label for email ${email.id}: ${syncError instanceof Error ? syncError.message : "Unknown error"}`;
-                  errors.push(errorMessage);
+              // If we're getting too many 404s, emails likely need re-syncing
+              if (emailNotFoundCount >= maxNotFoundBeforeWarning) {
+                // Try to find a valid email by fetching recent emails from provider
+                // For now, just skip and add a warning
+                if (emailNotFoundCount === maxNotFoundBeforeWarning) {
+                  errors.push(`Many emails not found in provider. This usually happens after re-authorization. Please sync your emails first to update email IDs.`);
                 }
+                // Skip remaining label creation attempts
+                continue;
+              }
+              
+              // Try to find another email to use for this label
+              const alternativeEmail = await ctx.db.email.findFirst({
+                where: {
+                  thread: {
+                    accountId: account.id,
+                  },
+                  id: {
+                    not: anyEmail.id,
+                  },
+                },
+                orderBy: {
+                  receivedAt: "desc",
+                },
+              });
+              
+              if (alternativeEmail) {
+                try {
+                  const altLabels = alternativeEmail.keywords || [];
+                  const altLabelsToPush = altLabels.includes(category.name)
+                    ? altLabels
+                    : [...altLabels, category.name];
+                  
+                  await syncEmailOrganizationToProvider({
+                    accountId: account.id,
+                    emailProviderId: alternativeEmail.id,
+                    customLabels: altLabelsToPush,
+                  });
+                  
+                  await ctx.db.email.update({
+                    where: { id: alternativeEmail.id },
+                    data: {
+                      keywords: altLabelsToPush,
+                      customLabels: altLabelsToPush,
+                    },
+                  });
+                  
+                  createdLabels.add(category.name);
+                  labelsCreatedCount++;
+                  console.log(`Created label "${category.name}" in email provider using alternative email`);
+                } catch (altError: any) {
+                  emailNotFoundCount++;
+                  if (altError?.response?.status === 404 || 
+                      (altError instanceof Error && altError.message.includes("Email not found in provider"))) {
+                    // Another 404, continue to next category
+                    continue;
+                  }
+                  const errorMessage = `Failed to create label "${category.name}": ${altError instanceof Error ? altError.message : "Unknown error"}`;
+                  errors.push(errorMessage);
+                  errorCount++;
+                }
+              } else {
+                const errorMessage = `Failed to create label "${category.name}": No emails available to create label`;
+                errors.push(errorMessage);
                 errorCount++;
               }
-            } catch (error) {
-              errorCount++;
-              const errorMessage = `Failed to process email ${email.id}: ${error instanceof Error ? error.message : "Unknown error"}`;
+            } else {
+              const errorMessage = `Failed to create label "${category.name}": ${createError instanceof Error ? createError.message : "Unknown error"}`;
               errors.push(errorMessage);
+              errorCount++;
             }
-          }),
-        );
+          }
+        }
+      } else {
+        // No emails in account, can't create labels
+        return {
+          success: false,
+          processedCount: 0,
+          successCount: 0,
+          errorCount: allCategories.length,
+          errors: ["Cannot create labels: No emails found in account. Please sync emails first."],
+          needsReauth: false,
+          needsResync: false,
+        };
+      }
+
+      // Step 5: Assign all categorized emails to their corresponding labels
+      for (const category of allCategories) {
+        const categoryEmails = emailsByCategory.get(category.name) || [];
         
-        // If we encountered auth errors, stop processing to avoid spam
-        if (hasAuthError && errorCount > 0) {
+        if (categoryEmails.length === 0) {
+          // No emails in this category, but label is already created
+          continue;
+        }
+
+        // Assign all emails in this category to the label
+        // Process emails in batches to avoid overwhelming the API
+        const batchSize = 10;
+        for (let i = 0; i < categoryEmails.length; i += batchSize) {
+          const batch = categoryEmails.slice(i, i + batchSize);
+          
+          await Promise.all(
+            batch.map(async (email) => {
+              try {
+                // Get existing labels and add category name if not already present
+                const existingLabels = email.keywords || [];
+                const categoryLabel = category.name;
+                
+                // Only add if not already present
+                if (!existingLabels.includes(categoryLabel)) {
+                  const updatedLabels = [...existingLabels, categoryLabel];
+                  
+                  // Update the email in database with new labels
+                  await ctx.db.email.update({
+                    where: { id: email.id },
+                    data: {
+                      keywords: updatedLabels,
+                      customLabels: updatedLabels,
+                    },
+                  });
+
+                  // Push to email provider
+                  try {
+                    await syncEmailOrganizationToProvider({
+                      accountId: account.id,
+                      emailProviderId: email.id,
+                      customLabels: updatedLabels,
+                    });
+                    successCount++;
+                  } catch (syncError: any) {
+                    // If it's an auth error, mark it but don't log every single one
+                    if (syncError instanceof Error && syncError.message.includes("No valid provider token")) {
+                      hasAuthError = true;
+                    } else if (
+                      syncError?.response?.status === 404 ||
+                      (syncError instanceof Error && syncError.message.includes("Email not found in provider"))
+                    ) {
+                      // Email not found in provider (might have been deleted or ID changed)
+                      // This often happens after re-authorization when email IDs change
+                      emailNotFoundCount++;
+                      
+                      // If we're getting too many 404s, add a warning
+                      if (emailNotFoundCount === maxNotFoundBeforeWarning) {
+                        errors.push(`Many emails not found in provider. This usually happens after re-authorization. Please sync your emails first to update email IDs.`);
+                      }
+                      
+                      console.log(`Email ${email.id} not found in provider, skipping label push (already updated in database)`);
+                      // Don't add to errors array or increment errorCount for individual emails
+                    } else {
+                      const errorMessage = `Failed to push label "${categoryLabel}" to email ${email.id}: ${syncError instanceof Error ? syncError.message : "Unknown error"}`;
+                      errors.push(errorMessage);
+                      errorCount++;
+                    }
+                  }
+                } else {
+                  // Label already exists, just verify it's in the provider
+                  try {
+                    await syncEmailOrganizationToProvider({
+                      accountId: account.id,
+                      emailProviderId: email.id,
+                      customLabels: existingLabels,
+                    });
+                    successCount++;
+                  } catch (syncError: any) {
+                    if (
+                      syncError?.response?.status === 404 ||
+                      (syncError instanceof Error && syncError.message.includes("Email not found in provider"))
+                    ) {
+                      emailNotFoundCount++;
+                      // If we're getting too many 404s, add a warning
+                      if (emailNotFoundCount === maxNotFoundBeforeWarning) {
+                        errors.push(`Many emails not found in provider. This usually happens after re-authorization. Please sync your emails first to update email IDs.`);
+                      }
+                      console.log(`Email ${email.id} not found in provider, skipping verification`);
+                    }
+                    // Don't count as error for already-labeled emails
+                  }
+                }
+              } catch (error) {
+                errorCount++;
+                const errorMessage = `Failed to process email ${email.id} in category "${category.name}": ${error instanceof Error ? error.message : "Unknown error"}`;
+                errors.push(errorMessage);
+              }
+            }),
+          );
+          
+          // If we encountered auth errors, stop processing to avoid spam
+          if (hasAuthError) {
+            break;
+          }
+        }
+        
+        if (hasAuthError) {
           break;
         }
       }
@@ -937,24 +1165,44 @@ export const mailRouter = createTRPCRouter({
       if (hasAuthError) {
         return {
           success: false,
-          processedCount: emails.length,
+          processedCount: categorizedEmails.length,
           successCount,
-          errorCount: emails.length - successCount,
+          errorCount: categorizedEmails.length - successCount,
           errors: [
-            `Unable to push categories to email provider: Account needs re-authorization. Please re-authorize your email account and try again. ${successCount > 0 ? `${successCount} email${successCount !== 1 ? "s" : ""} updated in database.` : ""}`.trim(),
+            `Unable to push categories to email provider: Account needs re-authorization. Please re-authorize your email account and try again. ${labelsCreatedCount > 0 ? `${labelsCreatedCount} label${labelsCreatedCount !== 1 ? "s" : ""} created. ` : ""}${successCount > 0 ? `${successCount} email${successCount !== 1 ? "s" : ""} updated.` : ""}`.trim(),
             ...errors.slice(0, 5), // Include up to 5 non-auth errors if any
           ],
           needsReauth: true,
+          needsResync: false,
+        };
+      }
+
+      // If we got many 404s, suggest re-syncing emails
+      if (emailNotFoundCount >= maxNotFoundBeforeWarning) {
+        return {
+          success: false,
+          processedCount: categorizedEmails.length,
+          successCount,
+          errorCount: categorizedEmails.length - successCount,
+          labelsCreated: labelsCreatedCount,
+          errors: [
+            `Unable to push categories: ${emailNotFoundCount} email${emailNotFoundCount !== 1 ? "s" : ""} not found in provider. This usually happens after re-authorization when email IDs change. Please sync your emails first to update email IDs, then try pushing categories again.`,
+            ...errors.filter(e => !e.includes("Many emails not found")).slice(0, 5),
+          ],
+          needsReauth: false,
+          needsResync: true,
         };
       }
 
       return {
         success: errorCount === 0,
-        processedCount: emails.length,
+        processedCount: categorizedEmails.length,
         successCount,
         errorCount,
+        labelsCreated: labelsCreatedCount,
         errors: errors.length > 0 ? errors.slice(0, 20) : undefined, // Limit error output
         needsReauth: false,
+        needsResync: false,
       };
     }),
 });

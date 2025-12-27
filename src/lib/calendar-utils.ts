@@ -60,11 +60,28 @@ export async function getCalendars(accountId: string): Promise<Calendar[]> {
     }));
   } catch (error) {
     if (axios.isAxiosError(error)) {
-      console.error("Error fetching calendars:", error.response?.data);
+      const status = error.response?.status;
+      const errorData = error.response?.data;
+      
+      console.error("Error fetching calendars:", errorData);
+      
+      // Provide more specific error messages
+      if (status === 404) {
+        const errorMessage = errorData?.message || errorData?.code || "notFound";
+        if (errorMessage === "notFound" || errorMessage.includes("notFound")) {
+          throw new Error("Calendar access not available. This account may not have calendar permissions. Please re-authorize your account with calendar access enabled.");
+        }
+        throw new Error(`Calendar endpoint not found: ${errorMessage}`);
+      } else if (status === 401 || status === 403) {
+        throw new Error("Calendar access denied. Please re-authorize your account with calendar permissions.");
+      } else {
+        const errorMessage = errorData?.message || error.message || "Unknown error";
+        throw new Error(`Failed to fetch calendars: ${errorMessage}`);
+      }
     } else {
       console.error("Unexpected error fetching calendars:", error);
+      throw error;
     }
-    throw error;
   }
 }
 
@@ -318,7 +335,18 @@ export async function syncCalendars(accountId: string): Promise<void> {
     }
   } catch (error) {
     console.error("Error syncing calendars:", error);
-    throw error;
+    
+    // Re-throw with improved error message if it's about calendar access
+    if (error instanceof Error) {
+      if (error.message.includes("Calendar access not available") || 
+          error.message.includes("calendar permissions") ||
+          error.message.includes("Calendar endpoint not found")) {
+        throw error; // Already has a good message
+      }
+    }
+    
+    // For other errors, provide a generic but helpful message
+    throw new Error(`Failed to sync calendars: ${error instanceof Error ? error.message : "Unknown error"}`);
   }
 }
 

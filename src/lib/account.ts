@@ -133,7 +133,52 @@ class Account {
           nextDeltaToken: storedDeltaToken,
         },
       });
-    } catch (error) {
+    } catch (error: any) {
+      // Check if the error is due to an invalid delta token
+      // This can happen after re-authorization when the old delta token is no longer valid
+      if (
+        error?.response?.data?.code === "token.notValid" ||
+        error?.response?.data?.message?.includes("Sync token is not valid") ||
+        (error?.response?.status === 400 && error?.response?.data?.code === "token.notValid")
+      ) {
+        console.log("Delta token is invalid, performing initial sync instead");
+        
+        // Clear the invalid delta token
+        await db.account.update({
+          where: {
+            id: account.id,
+          },
+          data: {
+            nextDeltaToken: null,
+          },
+        });
+        
+        // Perform initial sync to get a fresh delta token
+        const initialSyncResult = await this.performInitialSync();
+        if (!initialSyncResult) {
+          throw new Error("Failed to perform initial sync after invalid delta token");
+        }
+        
+        // Sync the emails to database
+        try {
+          await syncEmailsToDatabase(initialSyncResult.emails, account.id);
+        } catch (syncError) {
+          console.log("Error syncing emails to database:", syncError);
+        }
+        
+        // Update the account with the new delta token
+        await db.account.update({
+          where: {
+            id: account.id,
+          },
+          data: {
+            nextDeltaToken: initialSyncResult.deltaToken,
+          },
+        });
+        
+        return; // Successfully synced with initial sync
+      }
+      
       if (error instanceof Error && error.message === "TOKEN_EXPIRED") {
         // Mark account as needing re-authentication
         await db.account.update({

@@ -46,7 +46,8 @@ export const getAurinkoAuthorizationUrl = async (
   }
 
   // Build URL manually to avoid double encoding issues
-  const scopes = "Mail.Read Mail.ReadWrite";
+  // Include both mail and calendar scopes
+  const scopes = "Mail.Read Mail.ReadWrite Calendar.Read Calendar.ReadWrite";
   const baseUrl = "https://api.aurinko.io/v1/auth/authorize";
   const params = new URLSearchParams({
     clientId: process.env.AURINKO_CLIENT_ID as string,

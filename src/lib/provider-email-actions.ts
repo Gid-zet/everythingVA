@@ -83,14 +83,31 @@ export async function syncEmailOrganizationToProvider({
     return;
   }
 
-  await axios.patch(
-    `${API_BASE_URL}/email/messages/${emailProviderId}`,
-    payload,
-    {
-      headers: {
-        Authorization: `Bearer ${token}`,
+  try {
+    await axios.patch(
+      `${API_BASE_URL}/email/messages/${emailProviderId}`,
+      payload,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
       },
-    },
-  );
+    );
+  } catch (error: any) {
+    // Provide more descriptive error messages
+    if (axios.isAxiosError(error)) {
+      if (error.response?.status === 404) {
+        throw new Error(`Email not found in provider (ID: ${emailProviderId})`);
+      } else if (error.response?.status === 401 || error.response?.status === 403) {
+        throw new Error("No valid provider token available");
+      } else {
+        const errorMessage = error.response?.data?.message || 
+                           error.response?.data?.error || 
+                           `Request failed with status code ${error.response?.status}`;
+        throw new Error(errorMessage);
+      }
+    }
+    throw error;
+  }
 }
 

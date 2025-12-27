@@ -11,8 +11,11 @@ export default function PushCategoriesButton() {
   const pushCategoriesMutation = api.mail.pushCategoriesToEmailProvider.useMutation({
     onSuccess: (data) => {
       if (data.success) {
+        const labelsMessage = data.labelsCreated 
+          ? `Created ${data.labelsCreated} label${data.labelsCreated !== 1 ? "s" : ""} and `
+          : "";
         toast.success(
-          `Successfully pushed categories as labels to ${data.successCount} email${data.successCount !== 1 ? "s" : ""}.`
+          `${labelsMessage}Successfully pushed categories as labels to ${data.successCount} email${data.successCount !== 1 ? "s" : ""}.`
         );
       } else if (data.needsReauth) {
         // Show re-auth message prominently
@@ -21,6 +24,17 @@ export default function PushCategoriesButton() {
           : "Account needs re-authorization. Please re-authorize your email account before pushing categories.";
         toast.error(message, {
           duration: 8000, // Show for longer so user can read it
+        });
+        if (data.errors && data.errors.length > 1) {
+          console.error("Additional push errors:", data.errors.slice(1));
+        }
+      } else if (data.needsResync) {
+        // Show re-sync message prominently
+        const message = data.errors && data.errors[0] 
+          ? data.errors[0]
+          : "Emails need to be re-synced. Please sync your emails first to update email IDs, then try pushing categories again.";
+        toast.error(message, {
+          duration: 10000, // Show for longer so user can read it
         });
         if (data.errors && data.errors.length > 1) {
           console.error("Additional push errors:", data.errors.slice(1));

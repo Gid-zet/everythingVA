@@ -82,13 +82,36 @@ export const calendarRouter = createTRPCRouter({
     .input(z.object({
       accountId: z.string(),
     }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
+      // Verify account belongs to user
+      const account = await ctx.db.account.findFirst({
+        where: {
+          id: input.accountId,
+          userId: ctx.auth.id,
+        },
+      });
+
+      if (!account) {
+        throw new Error("Account not found or access denied");
+      }
+
       try {
         await syncCalendars(input.accountId);
         return { success: true };
       } catch (error) {
         console.error("Error syncing calendars:", error);
-        throw new Error("Failed to sync calendars");
+        
+        // Provide more specific error messages
+        if (error instanceof Error) {
+          // If the error already has a helpful message, use it
+          if (error.message.includes("Calendar access not available") ||
+              error.message.includes("calendar permissions") ||
+              error.message.includes("re-authorize")) {
+            throw error;
+          }
+        }
+        
+        throw new Error(`Failed to sync calendars: ${error instanceof Error ? error.message : "Unknown error"}`);
       }
     }),
 
