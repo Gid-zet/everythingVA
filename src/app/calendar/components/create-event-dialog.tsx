@@ -19,8 +19,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
-import { Calendar, Clock, MapPin, Users } from "lucide-react";
+import { Calendar, Clock, MapPin, Users, Repeat } from "lucide-react";
+import type { RecurrenceRule } from "@/lib/recurrence";
 
 interface CreateEventDialogProps {
   open: boolean;
@@ -48,13 +50,19 @@ export function CreateEventDialog({
     isAllDay: false,
     calendarId: "",
     attendees: "",
+    isRecurring: false,
+    recurrenceFrequency: "DAILY" as RecurrenceRule["frequency"],
+    recurrenceInterval: 1,
+    recurrenceWeekdays: [] as number[],
+    recurrenceEndType: "never" as "never" | "date" | "count",
+    recurrenceEndDate: "",
+    recurrenceCount: 10,
   });
 
-  const createEventMutation = api.calendar.createEvent.useMutation({
+  const createDbEventMutation = api.calendar.createDbEvent.useMutation({
     onSuccess: () => {
       toast.success("Event created successfully");
-      onEventCreated();
-      // Reset form
+      // Reset form first
       setFormData({
         title: "",
         description: "",
@@ -66,10 +74,21 @@ export function CreateEventDialog({
         isAllDay: false,
         calendarId: "",
         attendees: "",
+        isRecurring: false,
+        recurrenceFrequency: "DAILY",
+        recurrenceInterval: 1,
+        recurrenceWeekdays: [],
+        recurrenceEndType: "never",
+        recurrenceEndDate: "",
+        recurrenceCount: 10,
       });
+      // Then trigger refresh and close
+      onEventCreated();
+      onOpenChange(false);
     },
     onError: (error) => {
       toast.error(`Failed to create event: ${error.message}`);
+      console.error("Create event error:", error);
     },
   });
 
@@ -84,31 +103,40 @@ export function CreateEventDialog({
     const selectedCalendar = calendars.find(
       (cal) => cal.id === formData.calendarId,
     );
-    if (!selectedCalendar?.account?.id) {
+    if (!selectedCalendar) {
       toast.error("Please select a calendar");
       return;
     }
 
-    const attendees = formData.attendees
-      .split(",")
-      .map((email) => email.trim())
-      .filter((email) => email.length > 0)
-      .map((email) => ({ email }));
+    // Build recurrence rule if recurring
+    let recurrence: RecurrenceRule | null = null;
+    if (formData.isRecurring) {
+      recurrence = {
+        frequency: formData.recurrenceFrequency,
+        interval: formData.recurrenceInterval,
+        byWeekday: formData.recurrenceWeekdays.length > 0 ? formData.recurrenceWeekdays : undefined,
+      };
 
-    createEventMutation.mutate({
-      accountId: selectedCalendar.account.id,
-      calendarId: selectedCalendar.aurinkoCalendarId!,
+      if (formData.recurrenceEndType === "date" && formData.recurrenceEndDate) {
+        recurrence.endDate = new Date(formData.recurrenceEndDate);
+      } else if (formData.recurrenceEndType === "count") {
+        recurrence.count = formData.recurrenceCount;
+      }
+    }
+
+    createDbEventMutation.mutate({
+      calendarId: formData.calendarId,
       title: formData.title,
       description: formData.description || undefined,
       location: formData.location || undefined,
       startTime: new Date(formData.startTime).toISOString(),
       endTime: new Date(formData.endTime).toISOString(),
       isAllDay: formData.isAllDay,
-      attendees: attendees.length > 0 ? attendees : undefined,
+      recurrence: recurrence || undefined,
     });
   };
 
-  const handleInputChange = (field: string, value: string | boolean) => {
+  const handleInputChange = (field: string, value: string | boolean | number | number[]) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
   };
 
@@ -236,14 +264,142 @@ export function CreateEventDialog({
           </div>
 
           <div className="flex items-center space-x-2">
-            <input
-              type="checkbox"
+            <Checkbox
               id="isAllDay"
               checked={formData.isAllDay}
-              onChange={(e) => handleInputChange("isAllDay", e.target.checked)}
-              className="rounded"
+              onCheckedChange={(checked) => handleInputChange("isAllDay", checked === true)}
             />
-            <Label htmlFor="isAllDay">All-day event</Label>
+            <Label htmlFor="isAllDay" className="cursor-pointer">All-day event</Label>
+          </div>
+
+          {/* Recurrence Options */}
+          <div className="space-y-4 border-t pt-4">
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id="isRecurring"
+                checked={formData.isRecurring}
+                onCheckedChange={(checked) => handleInputChange("isRecurring", checked === true)}
+              />
+              <Label htmlFor="isRecurring" className="cursor-pointer flex items-center gap-2">
+                <Repeat className="h-4 w-4" />
+                Repeat event
+              </Label>
+            </div>
+
+            {formData.isRecurring && (
+              <div className="space-y-4 pl-6 border-l-2">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="recurrenceFrequency">Frequency</Label>
+                    <Select
+                      value={formData.recurrenceFrequency}
+                      onValueChange={(value) => handleInputChange("recurrenceFrequency", value)}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="DAILY">Daily</SelectItem>
+                        <SelectItem value="WEEKLY">Weekly</SelectItem>
+                        <SelectItem value="MONTHLY">Monthly</SelectItem>
+                        <SelectItem value="YEARLY">Yearly</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="recurrenceInterval">Repeat every</Label>
+                    <Input
+                      id="recurrenceInterval"
+                      type="number"
+                      min="1"
+                      value={formData.recurrenceInterval}
+                      onChange={(e) => handleInputChange("recurrenceInterval", parseInt(e.target.value) || 1)}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      {formData.recurrenceFrequency === "DAILY" && "days"}
+                      {formData.recurrenceFrequency === "WEEKLY" && "weeks"}
+                      {formData.recurrenceFrequency === "MONTHLY" && "months"}
+                      {formData.recurrenceFrequency === "YEARLY" && "years"}
+                    </p>
+                  </div>
+                </div>
+
+                {formData.recurrenceFrequency === "WEEKLY" && (
+                  <div className="space-y-2">
+                    <Label>Repeat on</Label>
+                    <div className="flex flex-wrap gap-2">
+                      {[
+                        { value: 0, label: "Sun" },
+                        { value: 1, label: "Mon" },
+                        { value: 2, label: "Tue" },
+                        { value: 3, label: "Wed" },
+                        { value: 4, label: "Thu" },
+                        { value: 5, label: "Fri" },
+                        { value: 6, label: "Sat" },
+                      ].map((day) => (
+                        <Button
+                          key={day.value}
+                          type="button"
+                          variant={formData.recurrenceWeekdays.includes(day.value) ? "default" : "outline"}
+                          size="sm"
+                          onClick={() => {
+                            const weekdays = formData.recurrenceWeekdays.includes(day.value)
+                              ? formData.recurrenceWeekdays.filter((d) => d !== day.value)
+                              : [...formData.recurrenceWeekdays, day.value];
+                            handleInputChange("recurrenceWeekdays", weekdays);
+                          }}
+                        >
+                          {day.label}
+                        </Button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <div className="space-y-2">
+                  <Label>Ends</Label>
+                  <Select
+                    value={formData.recurrenceEndType}
+                    onValueChange={(value) => handleInputChange("recurrenceEndType", value)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="never">Never</SelectItem>
+                      <SelectItem value="date">On date</SelectItem>
+                      <SelectItem value="count">After</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {formData.recurrenceEndType === "date" && (
+                  <div className="space-y-2">
+                    <Label htmlFor="recurrenceEndDate">End date</Label>
+                    <Input
+                      id="recurrenceEndDate"
+                      type="date"
+                      value={formData.recurrenceEndDate}
+                      onChange={(e) => handleInputChange("recurrenceEndDate", e.target.value)}
+                    />
+                  </div>
+                )}
+
+                {formData.recurrenceEndType === "count" && (
+                  <div className="space-y-2">
+                    <Label htmlFor="recurrenceCount">Number of occurrences</Label>
+                    <Input
+                      id="recurrenceCount"
+                      type="number"
+                      min="1"
+                      value={formData.recurrenceCount}
+                      onChange={(e) => handleInputChange("recurrenceCount", parseInt(e.target.value) || 10)}
+                    />
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           <div className="flex justify-end gap-2 pt-4">
@@ -254,8 +410,8 @@ export function CreateEventDialog({
             >
               Cancel
             </Button>
-            <Button type="submit" disabled={createEventMutation.isPending}>
-              {createEventMutation.isPending ? "Creating..." : "Create Event"}
+            <Button type="submit" disabled={createDbEventMutation.isPending}>
+              {createDbEventMutation.isPending ? "Creating..." : "Create Event"}
             </Button>
           </div>
         </form>

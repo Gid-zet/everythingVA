@@ -39,9 +39,23 @@ export interface Calendar {
  */
 export async function getCalendars(accountId: string): Promise<Calendar[]> {
   try {
+    // First check if account exists and has a refresh token
+    const account = await db.account.findUnique({
+      where: { id: accountId },
+      select: { token: true, refreshToken: true },
+    });
+
+    if (!account) {
+      throw new Error("Account not found. Please ensure the account is properly connected.");
+    }
+
+    if (!account.refreshToken) {
+      throw new Error("Account needs re-authorization. Please re-authorize your account with calendar access enabled.");
+    }
+
     const token = await getValidToken(accountId);
     if (!token) {
-      throw new Error("No valid token available");
+      throw new Error("No valid token available. Please re-authorize your account to refresh the access token.");
     }
 
     const response = await axios.get("https://api.aurinko.io/v1/calendar/calendars", {
@@ -274,6 +288,20 @@ export async function deleteCalendarEvent(
  */
 export async function syncCalendars(accountId: string): Promise<void> {
   try {
+    // First verify account exists and has credentials
+    const account = await db.account.findUnique({
+      where: { id: accountId },
+      select: { refreshToken: true },
+    });
+
+    if (!account) {
+      throw new Error("Account not found. Please ensure the account is properly connected.");
+    }
+
+    if (!account.refreshToken) {
+      throw new Error("Account needs re-authorization. Please re-authorize your account with calendar access enabled.");
+    }
+
     // Get calendars from Aurinko
     const aurinkoCalendars = await getCalendars(accountId);
     

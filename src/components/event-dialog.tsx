@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useState } from "react"
 import { RiCalendarLine, RiDeleteBinLine } from "@remixicon/react"
 import { format, isBefore } from "date-fns"
+import { Repeat } from "lucide-react"
+import type { RecurrenceRule } from "@/lib/recurrence"
 
 import type {
   CalendarEvent,
@@ -70,6 +72,15 @@ export function EventDialog({
   const [error, setError] = useState<string | null>(null)
   const [startDateOpen, setStartDateOpen] = useState(false)
   const [endDateOpen, setEndDateOpen] = useState(false)
+  
+  // Recurrence state
+  const [isRecurring, setIsRecurring] = useState(false)
+  const [recurrenceFrequency, setRecurrenceFrequency] = useState<RecurrenceRule["frequency"]>("DAILY")
+  const [recurrenceInterval, setRecurrenceInterval] = useState(1)
+  const [recurrenceWeekdays, setRecurrenceWeekdays] = useState<number[]>([])
+  const [recurrenceEndType, setRecurrenceEndType] = useState<"never" | "date" | "count">("never")
+  const [recurrenceEndDate, setRecurrenceEndDate] = useState("")
+  const [recurrenceCount, setRecurrenceCount] = useState(10)
 
   // Debug log to check what event is being passed
   useEffect(() => {
@@ -108,6 +119,13 @@ export function EventDialog({
     setLocation("")
     setColor("sky")
     setError(null)
+    setIsRecurring(false)
+    setRecurrenceFrequency("DAILY")
+    setRecurrenceInterval(1)
+    setRecurrenceWeekdays([])
+    setRecurrenceEndType("never")
+    setRecurrenceEndDate("")
+    setRecurrenceCount(10)
   }
 
   const formatTimeForInput = (date: Date) => {
@@ -171,6 +189,22 @@ export function EventDialog({
     // Use generic title if empty
     const eventTitle = title.trim() ? title : "(no title)"
 
+    // Build recurrence rule if recurring
+    let recurrence: RecurrenceRule | null = null
+    if (isRecurring) {
+      recurrence = {
+        frequency: recurrenceFrequency,
+        interval: recurrenceInterval,
+        byWeekday: recurrenceWeekdays.length > 0 ? recurrenceWeekdays : undefined,
+      }
+
+      if (recurrenceEndType === "date" && recurrenceEndDate) {
+        recurrence.endDate = new Date(recurrenceEndDate)
+      } else if (recurrenceEndType === "count") {
+        recurrence.count = recurrenceCount
+      }
+    }
+
     onSave({
       id: event?.id || "",
       title: eventTitle,
@@ -180,7 +214,8 @@ export function EventDialog({
       allDay,
       location,
       color,
-    })
+      recurrence: recurrence || undefined,
+    } as CalendarEvent & { recurrence?: RecurrenceRule })
   }
 
   const handleDelete = () => {
@@ -420,6 +455,137 @@ export function EventDialog({
               onChange={(e) => setLocation(e.target.value)}
             />
           </div>
+
+          {/* Recurrence Options */}
+          <div className="space-y-4 border-t pt-4">
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id="isRecurring"
+                checked={isRecurring}
+                onCheckedChange={(checked) => setIsRecurring(checked === true)}
+              />
+              <Label htmlFor="isRecurring" className="cursor-pointer flex items-center gap-2">
+                <Repeat className="h-4 w-4" />
+                Repeat event
+              </Label>
+            </div>
+
+            {isRecurring && (
+              <div className="space-y-4 pl-6 border-l-2">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="recurrenceFrequency">Frequency</Label>
+                    <Select
+                      value={recurrenceFrequency}
+                      onValueChange={(value) => setRecurrenceFrequency(value as RecurrenceRule["frequency"])}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="DAILY">Daily</SelectItem>
+                        <SelectItem value="WEEKLY">Weekly</SelectItem>
+                        <SelectItem value="MONTHLY">Monthly</SelectItem>
+                        <SelectItem value="YEARLY">Yearly</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="recurrenceInterval">Repeat every</Label>
+                    <Input
+                      id="recurrenceInterval"
+                      type="number"
+                      min="1"
+                      value={recurrenceInterval}
+                      onChange={(e) => setRecurrenceInterval(parseInt(e.target.value) || 1)}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      {recurrenceFrequency === "DAILY" && "days"}
+                      {recurrenceFrequency === "WEEKLY" && "weeks"}
+                      {recurrenceFrequency === "MONTHLY" && "months"}
+                      {recurrenceFrequency === "YEARLY" && "years"}
+                    </p>
+                  </div>
+                </div>
+
+                {recurrenceFrequency === "WEEKLY" && (
+                  <div className="space-y-2">
+                    <Label>Repeat on</Label>
+                    <div className="flex flex-wrap gap-2">
+                      {[
+                        { value: 0, label: "Sun" },
+                        { value: 1, label: "Mon" },
+                        { value: 2, label: "Tue" },
+                        { value: 3, label: "Wed" },
+                        { value: 4, label: "Thu" },
+                        { value: 5, label: "Fri" },
+                        { value: 6, label: "Sat" },
+                      ].map((day) => (
+                        <Button
+                          key={day.value}
+                          type="button"
+                          variant={recurrenceWeekdays.includes(day.value) ? "default" : "outline"}
+                          size="sm"
+                          onClick={() => {
+                            const weekdays = recurrenceWeekdays.includes(day.value)
+                              ? recurrenceWeekdays.filter((d) => d !== day.value)
+                              : [...recurrenceWeekdays, day.value]
+                            setRecurrenceWeekdays(weekdays)
+                          }}
+                        >
+                          {day.label}
+                        </Button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <div className="space-y-2">
+                  <Label>Ends</Label>
+                  <Select
+                    value={recurrenceEndType}
+                    onValueChange={(value) => setRecurrenceEndType(value as "never" | "date" | "count")}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="never">Never</SelectItem>
+                      <SelectItem value="date">On date</SelectItem>
+                      <SelectItem value="count">After</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {recurrenceEndType === "date" && (
+                  <div className="space-y-2">
+                    <Label htmlFor="recurrenceEndDate">End date</Label>
+                    <Input
+                      id="recurrenceEndDate"
+                      type="date"
+                      value={recurrenceEndDate}
+                      onChange={(e) => setRecurrenceEndDate(e.target.value)}
+                    />
+                  </div>
+                )}
+
+                {recurrenceEndType === "count" && (
+                  <div className="space-y-2">
+                    <Label htmlFor="recurrenceCount">Number of occurrences</Label>
+                    <Input
+                      id="recurrenceCount"
+                      type="number"
+                      min="1"
+                      value={recurrenceCount}
+                      onChange={(e) => setRecurrenceCount(parseInt(e.target.value) || 10)}
+                    />
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
           <fieldset className="space-y-4">
             <legend className="text-sm leading-none font-medium text-foreground">
               Etiquette

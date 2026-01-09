@@ -225,6 +225,8 @@ export default function CalendarPage() {
 
     // Otherwise, create a DB event as a fallback
     if (createDbEventMutation) {
+      // Extract recurrence from event if present
+      const eventWithRecurrence = event as any;
       createDbEventMutation.mutate({
         calendarId: selectedCalendar.id,
         title: event.title,
@@ -234,6 +236,7 @@ export default function CalendarPage() {
         endTime: event.end.toISOString(),
         isAllDay: event.allDay || false,
         color: event.color || undefined,
+        recurrence: eventWithRecurrence.recurrence || undefined,
       });
     } else {
       toast.error("Could not determine a calendar to save the event.");

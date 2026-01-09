@@ -7,6 +7,14 @@ import {
   deleteCalendarEvent,
   syncCalendars 
 } from "@/lib/calendar-utils";
+import {
+  getEventOccurrences,
+  getEventOccurrence,
+  editRecurringEvent,
+  deleteRecurringEvent,
+  addCustomOccurrence,
+} from "@/lib/recurring-events";
+import { toRRULE, type RecurrenceRule } from "@/lib/recurrence";
 import { db } from "@/server/db";
 
 export const calendarRouter = createTRPCRouter({
@@ -89,10 +97,20 @@ export const calendarRouter = createTRPCRouter({
           id: input.accountId,
           userId: ctx.auth.id,
         },
+        select: {
+          id: true,
+          refreshToken: true,
+          emailAddress: true,
+        },
       });
 
       if (!account) {
         throw new Error("Account not found or access denied");
+      }
+
+      // Check if account has a refresh token (required for calendar access)
+      if (!account.refreshToken) {
+        throw new Error(`Account "${account.emailAddress}" needs re-authorization. Please re-authorize your account with calendar access enabled to sync calendars.`);
       }
 
       try {
@@ -106,7 +124,9 @@ export const calendarRouter = createTRPCRouter({
           // If the error already has a helpful message, use it
           if (error.message.includes("Calendar access not available") ||
               error.message.includes("calendar permissions") ||
-              error.message.includes("re-authorize")) {
+              error.message.includes("re-authorize") ||
+              error.message.includes("No valid token available") ||
+              error.message.includes("Account needs re-authorization")) {
             throw error;
           }
         }
@@ -524,6 +544,10 @@ export const calendarRouter = createTRPCRouter({
             ? calendar.color 
             : "sky";
 
+        // Check if this is a recurring event
+        const isRecurring = !!input.recurrence;
+        const recurrenceData = input.recurrence as RecurrenceRule | null;
+
         const event = await db.calendarEvent.create({
           data: {
             calendarId: input.calendarId,
@@ -534,7 +558,10 @@ export const calendarRouter = createTRPCRouter({
             endTime: new Date(input.endTime),
             isAllDay: input.isAllDay,
             color: eventColor,
-            recurrence: input.recurrence || null,
+            isRecurring: isRecurring,
+            recurrence: input.recurrence ? JSON.parse(JSON.stringify(input.recurrence)) : null,
+            recurrenceEndDate: recurrenceData?.endDate || null,
+            recurrenceCount: recurrenceData?.count || null,
             attendees: input.attendees || null,
             meetingUrl: input.meetingUrl || null,
             reminders: input.reminders || null,
@@ -760,6 +787,236 @@ export const calendarRouter = createTRPCRouter({
       } catch (error) {
         console.error("Error fixing event colors:", error);
         throw new Error("Failed to fix event colors");
+      }
+    }),
+
+  // Get occurrences for a recurring event
+  getEventOccurrences: protectedProcedure
+    .input(
+      z.object({
+        masterEventId: z.string(),
+        startRange: z.string(),
+        endRange: z.string(),
+      })
+    )
+    .query(async ({ ctx, input }) => {
+      try {
+        // Verify the event belongs to the user
+        const masterEvent = await ctx.db.calendarEvent.findFirst({
+          where: {
+            id: input.masterEventId,
+            calendar: {
+              account: {
+                userId: ctx.auth.id,
+              },
+            },
+          },
+        });
+
+        if (!masterEvent) {
+          throw new Error("Event not found");
+        }
+
+        const occurrences = await getEventOccurrences(
+          input.masterEventId,
+          new Date(input.startRange),
+          new Date(input.endRange)
+        );
+
+        return occurrences;
+      } catch (error) {
+        console.error("Error fetching event occurrences:", error);
+        throw new Error("Failed to fetch event occurrences");
+      }
+    }),
+
+  // Get a single occurrence
+  getEventOccurrence: protectedProcedure
+    .input(
+      z.object({
+        masterEventId: z.string(),
+        occurrenceDate: z.string(),
+      })
+    )
+    .query(async ({ ctx, input }) => {
+      try {
+        // Verify the event belongs to the user
+        const masterEvent = await ctx.db.calendarEvent.findFirst({
+          where: {
+            id: input.masterEventId,
+            calendar: {
+              account: {
+                userId: ctx.auth.id,
+              },
+            },
+          },
+        });
+
+        if (!masterEvent) {
+          throw new Error("Event not found");
+        }
+
+        const occurrence = await getEventOccurrence(
+          input.masterEventId,
+          new Date(input.occurrenceDate)
+        );
+
+        return occurrence;
+      } catch (error) {
+        console.error("Error fetching event occurrence:", error);
+        throw new Error("Failed to fetch event occurrence");
+      }
+    }),
+
+  // Edit a recurring event occurrence
+  editRecurringEvent: protectedProcedure
+    .input(
+      z.object({
+        masterEventId: z.string(),
+        occurrenceDate: z.string(),
+        editScope: z.enum(["this", "thisAndFuture", "all"]),
+        updates: z.object({
+          title: z.string().optional(),
+          description: z.string().optional(),
+          location: z.string().optional(),
+          startTime: z.string().optional(),
+          endTime: z.string().optional(),
+          color: z.string().optional(),
+          isAllDay: z.boolean().optional(),
+          attendees: z.any().optional(),
+          meetingUrl: z.string().optional(),
+          reminders: z.any().optional(),
+        }),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      try {
+        // Verify the event belongs to the user
+        const masterEvent = await ctx.db.calendarEvent.findFirst({
+          where: {
+            id: input.masterEventId,
+            calendar: {
+              account: {
+                userId: ctx.auth.id,
+              },
+            },
+          },
+        });
+
+        if (!masterEvent) {
+          throw new Error("Event not found");
+        }
+
+        await editRecurringEvent(
+          input.masterEventId,
+          new Date(input.occurrenceDate),
+          {
+            title: input.updates.title,
+            description: input.updates.description,
+            location: input.updates.location,
+            startTime: input.updates.startTime ? new Date(input.updates.startTime) : undefined,
+            endTime: input.updates.endTime ? new Date(input.updates.endTime) : undefined,
+            color: input.updates.color,
+            isAllDay: input.updates.isAllDay,
+            attendees: input.updates.attendees,
+            meetingUrl: input.updates.meetingUrl,
+            reminders: input.updates.reminders,
+          },
+          input.editScope
+        );
+
+        return { success: true };
+      } catch (error) {
+        console.error("Error editing recurring event:", error);
+        throw new Error(`Failed to edit recurring event: ${error instanceof Error ? error.message : "Unknown error"}`);
+      }
+    }),
+
+  // Delete a recurring event occurrence
+  deleteRecurringEvent: protectedProcedure
+    .input(
+      z.object({
+        masterEventId: z.string(),
+        occurrenceDate: z.string(),
+        deleteScope: z.enum(["this", "thisAndFuture", "all"]),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      try {
+        // Verify the event belongs to the user
+        const masterEvent = await ctx.db.calendarEvent.findFirst({
+          where: {
+            id: input.masterEventId,
+            calendar: {
+              account: {
+                userId: ctx.auth.id,
+              },
+            },
+          },
+        });
+
+        if (!masterEvent) {
+          throw new Error("Event not found");
+        }
+
+        await deleteRecurringEvent(
+          input.masterEventId,
+          new Date(input.occurrenceDate),
+          input.deleteScope
+        );
+
+        return { success: true };
+      } catch (error) {
+        console.error("Error deleting recurring event:", error);
+        throw new Error(`Failed to delete recurring event: ${error instanceof Error ? error.message : "Unknown error"}`);
+      }
+    }),
+
+  // Add a custom occurrence to a recurring event
+  addCustomOccurrence: protectedProcedure
+    .input(
+      z.object({
+        masterEventId: z.string(),
+        occurrenceDate: z.string(),
+        endTime: z.string(),
+        overrides: z.object({
+          title: z.string().optional(),
+          description: z.string().optional(),
+          location: z.string().optional(),
+          color: z.string().optional(),
+          isAllDay: z.boolean().optional(),
+        }).optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      try {
+        // Verify the event belongs to the user
+        const masterEvent = await ctx.db.calendarEvent.findFirst({
+          where: {
+            id: input.masterEventId,
+            calendar: {
+              account: {
+                userId: ctx.auth.id,
+              },
+            },
+          },
+        });
+
+        if (!masterEvent) {
+          throw new Error("Event not found");
+        }
+
+        await addCustomOccurrence(
+          input.masterEventId,
+          new Date(input.occurrenceDate),
+          new Date(input.endTime),
+          input.overrides
+        );
+
+        return { success: true };
+      } catch (error) {
+        console.error("Error adding custom occurrence:", error);
+        throw new Error(`Failed to add custom occurrence: ${error instanceof Error ? error.message : "Unknown error"}`);
       }
     }),
 });
