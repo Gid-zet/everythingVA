@@ -3,53 +3,62 @@
 @tailwind utilities;
 @layer base {
   :root {
+    /* Warm-neutral "paper" palette with a single indigo accent */
     --background: 0 0% 100%;
-    --foreground: 0 0% 3.9%;
+    --foreground: 240 10% 8%;
     --card: 0 0% 100%;
-    --card-foreground: 0 0% 3.9%;
+    --card-foreground: 240 10% 8%;
     --popover: 0 0% 100%;
-    --popover-foreground: 0 0% 3.9%;
-    --primary: 0 0% 9%;
+    --popover-foreground: 240 10% 8%;
+    --primary: 240 8% 10%;
     --primary-foreground: 0 0% 98%;
-    --secondary: 0 0% 96.1%;
-    --secondary-foreground: 0 0% 9%;
-    --muted: 0 0% 96.1%;
-    --muted-foreground: 0 0% 45.1%;
-    --accent: 0 0% 96.1%;
-    --accent-foreground: 0 0% 9%;
-    --destructive: 0 84.2% 60.2%;
+    --secondary: 240 6% 96%;
+    --secondary-foreground: 240 8% 12%;
+    --muted: 240 6% 96%;
+    --muted-foreground: 240 4% 46%;
+    --accent: 240 6% 95%;
+    --accent-foreground: 240 8% 12%;
+    --destructive: 0 72% 51%;
     --destructive-foreground: 0 0% 98%;
-    --border: 0 0% 89.8%;
-    --input: 0 0% 89.8%;
-    --ring: 0 0% 3.9%;
-    --chart-1: 12 76% 61%;
+    --border: 240 6% 91%;
+    --input: 240 6% 89%;
+    --ring: 243 75% 59%;
+    --brand: 243 75% 59%;
+    --brand-foreground: 0 0% 100%;
+    --brand-soft: 243 100% 97%;
+    --sidebar: 240 10% 98.5%;
+    --chart-1: 243 75% 59%;
     --chart-2: 173 58% 39%;
     --chart-3: 197 37% 24%;
     --chart-4: 43 74% 66%;
     --chart-5: 27 87% 67%;
-    --radius: 0.5rem;
+    --radius: 0.625rem;
   }
   .dark {
-    --background: 0 0% 3.9%;
-    --foreground: 0 0% 98%;
-    --card: 0 0% 3.9%;
-    --card-foreground: 0 0% 98%;
-    --popover: 0 0% 3.9%;
-    --popover-foreground: 0 0% 98%;
-    --primary: 0 0% 98%;
-    --primary-foreground: 0 0% 9%;
-    --secondary: 0 0% 14.9%;
-    --secondary-foreground: 0 0% 98%;
-    --muted: 0 0% 14.9%;
-    --muted-foreground: 0 0% 63.9%;
-    --accent: 0 0% 14.9%;
-    --accent-foreground: 0 0% 98%;
-    --destructive: 0 62.8% 30.6%;
+    --background: 240 8% 5%;
+    --foreground: 240 5% 96%;
+    --card: 240 7% 7%;
+    --card-foreground: 240 5% 96%;
+    --popover: 240 7% 8%;
+    --popover-foreground: 240 5% 96%;
+    --primary: 240 5% 96%;
+    --primary-foreground: 240 8% 8%;
+    --secondary: 240 5% 12%;
+    --secondary-foreground: 240 5% 96%;
+    --muted: 240 5% 12%;
+    --muted-foreground: 240 4% 62%;
+    --accent: 240 5% 13%;
+    --accent-foreground: 240 5% 96%;
+    --destructive: 0 62% 45%;
     --destructive-foreground: 0 0% 98%;
-    --border: 0 0% 14.9%;
-    --input: 0 0% 14.9%;
-    --ring: 0 0% 83.1%;
-    --chart-1: 220 70% 50%;
+    --border: 240 5% 14%;
+    --input: 240 5% 16%;
+    --ring: 243 85% 68%;
+    --brand: 243 85% 68%;
+    --brand-foreground: 0 0% 100%;
+    --brand-soft: 243 40% 14%;
+    --sidebar: 240 8% 6.5%;
+    --chart-1: 243 85% 68%;
     --chart-2: 160 60% 45%;
     --chart-3: 30 80% 55%;
     --chart-4: 280 65% 60%;
@@ -61,8 +70,13 @@
     @apply border-border;
   }
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground antialiased;
     overflow-x: hidden;
+    font-feature-settings: "cv11", "ss01", "ss03";
+    text-rendering: optimizeLegibility;
+  }
+  ::selection {
+    background: hsl(var(--brand) / 0.18);
   }
   html {
     overflow-x: hidden;
@@ -117,7 +131,7 @@
 }
 
 .is-active {
-  background-color: #dadada;
+  background-color: hsl(var(--accent));
   border-radius: 4px;
   padding: 0px 2px;
 }
@@ -127,28 +141,37 @@
   background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32' width='32' height='32' fill='none' stroke='rgb(255 255 255 / 0.05)'%3e%3cpath d='m0 .5H31.5V32'/%3e%3c/svg%3e");
 }
 
-/* Smooth transitions for theme switching */
+/* Thin, quiet scrollbars. (The old global `* { transition }` rule animated
+   every element on every state change and made the inbox feel laggy; theme
+   changes are already instant via next-themes' disableTransitionOnChange.) */
 * {
-  transition:
-    background-color 0.3s ease,
-    border-color 0.3s ease,
-    color 0.3s ease;
+  scrollbar-width: thin;
+  scrollbar-color: hsl(var(--muted-foreground) / 0.25) transparent;
 }
-
-/* Custom scrollbar */
 ::-webkit-scrollbar {
-  width: 8px;
+  width: 10px;
+  height: 10px;
 }
-
 ::-webkit-scrollbar-track {
-  background: hsl(var(--muted));
+  background: transparent;
 }
-
 ::-webkit-scrollbar-thumb {
-  background: hsl(var(--muted-foreground));
-  border-radius: 4px;
+  background: hsl(var(--muted-foreground) / 0.22);
+  border-radius: 999px;
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--muted-foreground) / 0.4);
+  background-clip: content-box;
 }
 
-::-webkit-scrollbar-thumb:hover {
-  background: hsl(var(--foreground));
+/* Deterministic sender avatars (hue set per sender via --h) */
+.sender-avatar {
+  background: linear-gradient(135deg, hsl(var(--h) 85% 94%), hsl(var(--h) 70% 86%));
+  color: hsl(var(--h) 55% 32%);
+}
+.dark .sender-avatar {
+  background: linear-gradient(135deg, hsl(var(--h) 45% 22%), hsl(var(--h) 40% 16%));
+  color: hsl(var(--h) 80% 82%);
 }

@@ -1,4 +1,4 @@
-﻿import { z } from "zod";
+import { z } from "zod";
 import { createTRPCRouter, protectedProcedure, publicProcedure } from "../trpc";
 import Account from "@/lib/account";
 import { syncEmailsToDatabase } from "@/lib/sync-to-db";
@@ -114,6 +114,8 @@ export const mailRouter = createTRPCRouter({
         accountId: z.string(),
         tab: z.string(),
         done: z.boolean(),
+        cursor: z.string().nullish(),
+        limit: z.number().min(1).max(50).default(25),
       }),
     )
     .query(async ({ ctx, input }) => {
@@ -135,31 +137,56 @@ export const mailRouter = createTRPCRouter({
         equals: input.done,
       };
 
+      // List rows only need the latest message's snippet — full HTML bodies are
+      // loaded per-thread by getThreadById when a thread is opened.
       const threads = await ctx.db.thread.findMany({
         where: filter,
         include: {
           emails: {
             orderBy: {
-              sentAt: "asc",
+              sentAt: "desc",
             },
+            take: 1,
             select: {
               from: true,
-              body: true,
               bodySnippet: true,
               emailLabel: true,
               subject: true,
               sysLabels: true,
+              status: true,
+              hasAttachments: true,
               id: true,
               sentAt: true,
             },
           },
+          _count: { select: { emails: true } },
         },
-        take: 15,
-        orderBy: {
-          lastMessageDate: "desc",
-        },
+        take: input.limit + 1,
+        ...(input.cursor ? { cursor: { id: input.cursor }, skip: 1 } : {}),
+        orderBy: [{ lastMessageDate: "desc" }, { id: "desc" }],
       });
-      return threads;
+
+      let nextCursor: string | null = null;
+      if (threads.length > input.limit) {
+        threads.pop();
+        nextCursor = threads.at(-1)?.id ?? null;
+      }
+      return { threads, nextCursor };
+    }),
+
+  getThreadCounts: protectedProcedure
+    .input(z.object({ accountId: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const account = await authoriseAccountAccess(
+        input.accountId,
+        ctx.auth.id,
+      );
+      const [inbox, drafts, sent] = await ctx.db.$transaction([
+        ctx.db.thread.count({ where: { ...inboxFilter(account.id), done: false } }),
+        ctx.db.thread.count({ where: draftFilter(account.id) }),
+        ctx.db.thread.count({ where: sentFilter(account.id) }),
+      ]);
+      return { inbox, drafts, sent };
     }),
 
   getThreadById: protectedProcedure
@@ -174,8 +201,8 @@ export const mailRouter = createTRPCRouter({
         input.accountId,
         ctx.auth.id,
       );
-      return await ctx.db.thread.findUnique({
-        where: { id: input.threadId },
+      return await ctx.db.thread.findFirst({
+        where: { id: input.threadId, accountId: account.id },
         include: {
           emails: {
             orderBy: {
@@ -183,6 +210,8 @@ export const mailRouter = createTRPCRouter({
             },
             select: {
               from: true,
+              to: true,
+              cc: true,
               body: true,
               subject: true,
               bodySnippet: true,
@@ -210,8 +239,8 @@ export const mailRouter = createTRPCRouter({
         ctx.auth.id,
       );
 
-      const thread = await ctx.db.thread.findUnique({
-        where: { id: input.threadId },
+      const thread = await ctx.db.thread.findFirst({
+        where: { id: input.threadId, accountId: account.id },
         include: {
           emails: {
             orderBy: { sentAt: "asc" },
@@ -314,28 +343,14 @@ export const mailRouter = createTRPCRouter({
         ctx.auth.id,
       );
       if (!account) throw new Error("Invalid token");
-      if (input.threadId) {
-        await ctx.db.thread.update({
-          where: {
-            id: input.threadId,
-          },
-          data: {
-            done: false,
-          },
-        });
-      }
-      if (input.threadIds) {
-        await ctx.db.thread.updateMany({
-          where: {
-            id: {
-              in: input.threadIds,
-            },
-          },
-          data: {
-            done: false,
-          },
-        });
-      }
+      const ids = [
+        ...(input.threadId ? [input.threadId] : []),
+        ...(input.threadIds ?? []),
+      ];
+      await ctx.db.thread.updateMany({
+        where: { id: { in: ids }, accountId: account.id },
+        data: { done: false },
+      });
     }),
   setDone: protectedProcedure
     .input(
@@ -353,28 +368,14 @@ export const mailRouter = createTRPCRouter({
         ctx.auth.id,
       );
       if (!account) throw new Error("Invalid token");
-      if (input.threadId) {
-        await ctx.db.thread.update({
-          where: {
-            id: input.threadId,
-          },
-          data: {
-            done: true,
-          },
-        });
-      }
-      if (input.threadIds) {
-        await ctx.db.thread.updateMany({
-          where: {
-            id: {
-              in: input.threadIds,
-            },
-          },
-          data: {
-            done: true,
-          },
-        });
-      }
+      const ids = [
+        ...(input.threadId ? [input.threadId] : []),
+        ...(input.threadIds ?? []),
+      ];
+      await ctx.db.thread.updateMany({
+        where: { id: { in: ids }, accountId: account.id },
+        data: { done: true },
+      });
     }),
   getEmailDetails: protectedProcedure
     .input(
@@ -419,7 +420,6 @@ export const mailRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const acc = await authoriseAccountAccess(input.accountId, ctx.auth.id);
       const account = new Account(acc.token);
-      console.log("sendmail", input);
       await account.sendEmail({
         body: input.body,
         subject: input.subject,

@@ -17,13 +17,15 @@ async function syncEmailsToDatabase(emails: EmailMessage[], accountId: string) {
   const limit = pLimit(10); // Process up to 10 emails concurrently
 
   const oramaClient = new OramaManager(accountId);
-  oramaClient.initialize();
+  // Must be awaited: the index is restored from the DB before any insert.
+  await oramaClient.initialize();
 
   try {
     async function syncToOrama() {
       await Promise.all(
         emails.map((email) => {
           return limit(async () => {
+            try {
             const body = turndown.turndown(
               email.body ?? email.bodySnippet ?? "",
             );
@@ -39,6 +41,10 @@ async function syncEmailsToDatabase(emails: EmailMessage[], accountId: string) {
               embeddings: bodyEmbedding,
               threadId: email.threadId,
             });
+            } catch (error) {
+              // One failed embedding must not abort indexing for the whole batch.
+              console.error(`Failed to index email ${email.id}:`, error);
+            }
           });
         }),
       );
@@ -63,7 +69,9 @@ async function upsertEmail(
   index: number,
   accountId: string,
 ) {
-  console.log(`Upserting email ${index + 1}`, JSON.stringify(email, null, 2));
+  if (process.env.NODE_ENV === "development") {
+    console.log(`Upserting email ${index + 1}: ${email.id}`);
+  }
   try {
     // determine email label type
     let emailLabelType: "inbox" | "sent" | "draft" = "inbox";

@@ -1,268 +1,186 @@
-import EmailEditor from "./email-editor";
-import {
-  Archive,
-  ArchiveX,
-  Clock,
-  Forward,
-  MoreVertical,
-  Reply,
-  ReplyAll,
-  Trash2,
-} from "lucide-react";
+import { Check, ChevronDown, ChevronUp, MailOpen, Undo2, X } from "lucide-react";
+import { useAtom } from "jotai";
 
-import {
-  DropdownMenuContent,
-  DropdownMenuItem,
-} from "@/components/ui/dropdown-menu";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
-import { Calendar } from "@/components/ui/calendar";
-import {
-  DropdownMenu,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { Label } from "@/components/ui/label";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
-import { Separator } from "@/components/ui/separator";
-import { Switch } from "@/components/ui/switch";
-import { Textarea } from "@/components/ui/textarea";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { api, type RouterOutputs } from "@/trpc/react";
-import { addDays, addHours, format, nextSaturday } from "date-fns";
 import EmailDisplay from "./email-display";
 import { useThread } from "../use-thread";
-import useThreads from "../use-threads";
-import { useAtom } from "jotai";
-import { isSearchingAtom, searchValueAtom } from "@/lib/atoms";
+import useThreads, { useCurrentThread } from "../use-threads";
+import { useThreadActions } from "../use-thread-actions";
+import { isSearchingAtom } from "@/lib/atoms";
 import SearchDisplay from "./search-display";
-import { useLocalStorage } from "usehooks-ts";
 import ReplyBox from "./reply-box";
+
+function Kbd({ children }: { children: React.ReactNode }) {
+  return (
+    <kbd className="ml-2 rounded border bg-muted px-1 font-sans text-[10px] text-muted-foreground">
+      {children}
+    </kbd>
+  );
+}
 
 export function ThreadDisplay() {
   const [threadId, setThreadId] = useThread();
-  const { threads, isFetching } = useThreads();
-  const today = new Date();
-  const _thread = threads?.find((t) => t.id === threadId);
-  const [isSearching, setIsSearching] = useAtom(isSearchingAtom);
+  const { threads, done } = useThreads();
+  const [isSearching] = useAtom(isSearchingAtom);
+  const { markDone, markUndone } = useThreadActions();
+  const { data: thread, isLoading } = useCurrentThread(threadId);
 
-  const [accountId] = useLocalStorage("accountId", "");
+  const idx = threads.findIndex((t) => t.id === threadId);
+  const go = (delta: number) => {
+    const next = threads[idx + delta];
+    if (next) setThreadId(next.id);
+  };
 
-  const { data: foundThread } = api.mail.getThreadById.useQuery(
-    {
-      accountId: accountId,
-      threadId: threadId ?? "",
-    },
-    { enabled: !!!_thread && !!threadId },
-  );
-  const thread = _thread ?? foundThread;
+  const participants = thread
+    ? Array.from(
+        new Set(thread.emails.map((e) => e.from.name || e.from.address)),
+      )
+    : [];
 
   return (
-    <div className="flex h-full flex-col">
-      <div className="flex items-center p-2">
-        <div className="flex items-center gap-2">
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button variant="ghost" size="icon" disabled={!thread}>
-                <Archive className="h-4 w-4" />
-                <span className="sr-only">Archive</span>
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>Archive</TooltipContent>
-          </Tooltip>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button variant="ghost" size="icon" disabled={!thread}>
-                <ArchiveX className="h-4 w-4" />
-                <span className="sr-only">Move to junk</span>
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>Move to junk</TooltipContent>
-          </Tooltip>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button variant="ghost" size="icon" disabled={!thread}>
-                <Trash2 className="h-4 w-4" />
-                <span className="sr-only">Move to trash</span>
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>Move to trash</TooltipContent>
-          </Tooltip>
-          <Separator orientation="vertical" className="mx-1 h-6" />
-          <Tooltip>
-            <Popover>
-              <PopoverTrigger asChild>
-                <TooltipTrigger asChild>
-                  <Button variant="ghost" size="icon" disabled={!thread}>
-                    <Clock className="h-4 w-4" />
-                    <span className="sr-only">Snooze</span>
-                  </Button>
-                </TooltipTrigger>
-              </PopoverTrigger>
-              <PopoverContent className="flex w-[535px] p-0">
-                <div className="flex flex-col gap-2 border-r px-2 py-4">
-                  <div className="px-4 text-sm font-medium">Snooze until</div>
-                  <div className="grid min-w-[250px] gap-1">
-                    <Button
-                      variant="ghost"
-                      className="justify-start font-normal"
-                    >
-                      Later today{" "}
-                      <span className="ml-auto text-muted-foreground">
-                        {format(addHours(today, 4), "E, h:m b")}
-                      </span>
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      className="justify-start font-normal"
-                    >
-                      Tomorrow
-                      <span className="ml-auto text-muted-foreground">
-                        {format(addDays(today, 1), "E, h:m b")}
-                      </span>
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      className="justify-start font-normal"
-                    >
-                      This weekend
-                      <span className="ml-auto text-muted-foreground">
-                        {format(nextSaturday(today), "E, h:m b")}
-                      </span>
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      className="justify-start font-normal"
-                    >
-                      Next week
-                      <span className="ml-auto text-muted-foreground">
-                        {format(addDays(today, 7), "E, h:m b")}
-                      </span>
-                    </Button>
-                  </div>
-                </div>
-                <div className="p-2">
-                  <Calendar />
-                </div>
-              </PopoverContent>
-            </Popover>
-            <TooltipContent>Snooze</TooltipContent>
-          </Tooltip>
-        </div>
-        <div className="ml-auto flex items-center gap-2">
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button variant="ghost" size="icon" disabled={!thread}>
-                <Reply className="h-4 w-4" />
-                <span className="sr-only">Reply</span>
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>Reply</TooltipContent>
-          </Tooltip>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button variant="ghost" size="icon" disabled={!thread}>
-                <ReplyAll className="h-4 w-4" />
-                <span className="sr-only">Reply all</span>
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>Reply all</TooltipContent>
-          </Tooltip>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button variant="ghost" size="icon" disabled={!thread}>
-                <Forward className="h-4 w-4" />
-                <span className="sr-only">Forward</span>
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>Forward</TooltipContent>
-          </Tooltip>
-        </div>
-        <Separator orientation="vertical" className="mx-2 h-6" />
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" disabled={!thread}>
-              <MoreVertical className="h-4 w-4" />
-              <span className="sr-only">More</span>
+    <div className="flex h-full flex-col bg-background">
+      {/* Toolbar */}
+      <div className="flex h-[52px] items-center gap-1 border-b px-3">
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 gap-1.5 px-2.5 text-[13px]"
+              disabled={!thread}
+              onClick={() =>
+                threadId && void (done ? markUndone : markDone)([threadId])
+              }
+            >
+              {done ? <Undo2 className="size-4" /> : <Check className="size-4" />}
+              {done ? "Move to inbox" : "Done"}
             </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem>Mark as unread</DropdownMenuItem>
-            <DropdownMenuItem>Star thread</DropdownMenuItem>
-            <DropdownMenuItem>Add label</DropdownMenuItem>
-            <DropdownMenuItem>Mute thread</DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+          </TooltipTrigger>
+          <TooltipContent>
+            {done ? "Move back to inbox" : "Mark done"}
+            <Kbd>{done ? "U" : "D"}</Kbd>
+          </TooltipContent>
+        </Tooltip>
+
+        <div className="ml-auto flex items-center gap-0.5">
+          {thread && idx !== -1 && (
+            <span className="mr-2 text-[11px] tabular-nums text-muted-foreground">
+              {idx + 1} of {threads.length}
+            </span>
+          )}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="size-8"
+                disabled={idx <= 0}
+                onClick={() => go(-1)}
+                aria-label="Previous thread"
+              >
+                <ChevronUp className="size-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              Previous<Kbd>K</Kbd>
+            </TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="size-8"
+                disabled={idx === -1 || idx >= threads.length - 1}
+                onClick={() => go(1)}
+                aria-label="Next thread"
+              >
+                <ChevronDown className="size-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              Next<Kbd>J</Kbd>
+            </TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="size-8"
+                disabled={!threadId}
+                onClick={() => setThreadId(undefined)}
+                aria-label="Close thread"
+              >
+                <X className="size-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              Close<Kbd>Esc</Kbd>
+            </TooltipContent>
+          </Tooltip>
+        </div>
       </div>
-      <Separator />
+
       {isSearching ? (
         <SearchDisplay />
-      ) : (
-        <>
-          {thread ? (
-            <div className="flex flex-1 flex-col overflow-scroll">
-              <div className="flex items-start p-3 sm:p-4">
-                <div className="flex items-start gap-2 text-sm sm:gap-4">
-                  <Avatar className="h-8 w-8 sm:h-10 sm:w-10">
-                    <AvatarImage alt={"lol"} />
-                    <AvatarFallback className="text-xs sm:text-sm">
-                      {thread?.emails[0]?.from?.name
-                        ?.split(" ")
-                        .map((chunk) => chunk[0])
-                        .join("")}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div className="grid min-w-0 flex-1 gap-1">
-                    <div className="truncate text-sm font-semibold sm:text-base">
-                      {thread.emails[0]?.from?.name}
-                    </div>
-                    <div className="line-clamp-1 text-xs sm:text-sm">
-                      {thread.emails[0]?.subject}
-                    </div>
-                    <div className="line-clamp-1 hidden text-xs sm:block">
-                      <span className="font-medium">Reply-To:</span>{" "}
-                      {thread.emails[0]?.from?.address}
-                    </div>
-                  </div>
-                </div>
-                {thread.emails[0]?.sentAt && (
-                  <div className="ml-2 flex-shrink-0 text-xs text-muted-foreground">
-                    <span className="hidden sm:inline">
-                      {format(new Date(thread.emails[0].sentAt), "PPpp")}
-                    </span>
-                    <span className="sm:hidden">
-                      {format(new Date(thread.emails[0].sentAt), "MMM d")}
-                    </span>
-                  </div>
+      ) : thread ? (
+        <div className="flex min-h-0 flex-1 flex-col">
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            <header className="px-6 pb-4 pt-6">
+              <h2 className="text-balance text-xl font-semibold tracking-tight">
+                {thread.subject || "(no subject)"}
+              </h2>
+              <p className="mt-1.5 text-xs text-muted-foreground">
+                {thread.emails.length} message
+                {thread.emails.length === 1 ? "" : "s"}
+                {participants.length > 0 && (
+                  <>
+                    {" · "}
+                    {participants.slice(0, 3).join(", ")}
+                    {participants.length > 3 &&
+                      ` +${participants.length - 3}`}
+                  </>
                 )}
-              </div>
-              <Separator />
-              <div className="flex max-h-[calc(100vh-500px)] flex-col overflow-scroll">
-                <div className="flex flex-col gap-4 p-6">
-                  {thread.emails.map((email) => {
-                    return <EmailDisplay key={email.id} email={email} />;
-                  })}
-                </div>
-              </div>
-              <div className="flex-1"></div>
-              <Separator className="mt-auto" />
-              <ReplyBox />
+              </p>
+            </header>
+            <div className="flex flex-col gap-3 px-4 pb-6 sm:px-6">
+              {thread.emails.map((email, i) => (
+                <EmailDisplay
+                  key={email.id}
+                  email={email}
+                  defaultOpen={i >= thread.emails.length - 2}
+                />
+              ))}
             </div>
-          ) : (
-            <>
-              <div className="p-8 text-center text-muted-foreground">
-                No message selected {threadId}
-              </div>
-            </>
-          )}
-        </>
+          </div>
+          <div className="border-t bg-sidebar/60">
+            <ReplyBox />
+          </div>
+        </div>
+      ) : threadId && isLoading ? (
+        <div className="space-y-3 p-6">
+          <div className="h-6 w-2/3 animate-pulse rounded bg-muted" />
+          <div className="h-3 w-1/3 animate-pulse rounded bg-muted" />
+          <div className="mt-6 h-48 animate-pulse rounded-xl bg-muted/70" />
+        </div>
+      ) : (
+        <div className="flex flex-1 flex-col items-center justify-center gap-3 p-8 text-center">
+          <div className="flex size-12 items-center justify-center rounded-2xl border bg-sidebar text-muted-foreground">
+            <MailOpen className="size-5" />
+          </div>
+          <div>
+            <p className="text-sm font-medium">No conversation selected</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Pick a thread, or press <Kbd>J</Kbd> to start reading.
+            </p>
+          </div>
+        </div>
       )}
     </div>
   );
