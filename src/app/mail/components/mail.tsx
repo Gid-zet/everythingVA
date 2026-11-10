@@ -24,6 +24,7 @@ import AuthoriseButton from "@/components/authorise-button";
 import PushCategoriesButton from "@/components/push-categories-button";
 import ComposeButton from "./compose-button";
 import SidebarFooter from "./sidebar-footer";
+import { BulkUnsubscribe } from "./bulk-unsubscribe";
 
 interface MailProps {
   defaultLayout: number[] | undefined;
@@ -44,7 +45,17 @@ export function Mail({
   // Normalize tab value for comparison (handle "email setup" or "setup")
   const isSetupTab = tab === "setup" || tab === "email setup";
   const tabTitle =
-    tab === "drafts" ? "Drafts" : tab === "sent" ? "Sent" : "Inbox";
+    tab === "drafts"
+      ? "Drafts"
+      : tab === "sent"
+        ? "Sent"
+        : tab === "snoozed"
+          ? "Snoozed"
+          : tab === "trash"
+            ? "Trash"
+            : "Inbox";
+  // Snoozed and Trash are single lists; the others split active / archived.
+  const hasArchiveSplit = tab !== "snoozed" && tab !== "trash";
 
   // Clean up corrupted cookies on mount
   React.useEffect(() => {
@@ -157,6 +168,8 @@ export function Mail({
             <div className="h-full overflow-auto">
               <EmailOrganizer accountId={accountId} />
             </div>
+          ) : tab === "unsubscribe" ? (
+            <BulkUnsubscribe />
           ) : isSetupTab ? (
             <div className="flex h-full flex-col items-center justify-center p-8">
               <div className="w-full max-w-md space-y-4">
@@ -194,7 +207,12 @@ export function Mail({
                 <h1 className="text-[15px] font-semibold tracking-tight">
                   {tabTitle}
                 </h1>
-                <TabsList className="ml-auto h-8 rounded-lg p-0.5">
+                <TabsList
+                  className={cn(
+                    "ml-auto h-8 rounded-lg p-0.5",
+                    !hasArchiveSplit && "hidden",
+                  )}
+                >
                   <TabsTrigger
                     value="inbox"
                     className="h-7 rounded-md px-3 text-xs"
@@ -205,7 +223,7 @@ export function Mail({
                     value="done"
                     className="h-7 rounded-md px-3 text-xs"
                   >
-                    Done
+                    Archived
                   </TabsTrigger>
                 </TabsList>
               </div>

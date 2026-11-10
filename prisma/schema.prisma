@@ -96,6 +96,12 @@ model Thread {
 
   done Boolean @default(false)
 
+  // Provider-synced triage state. `done` doubles as "archived" (Aurinko
+  // `archived: true`); these timestamps record trash / snooze.
+  archivedAt   DateTime?
+  trashedAt    DateTime?
+  snoozedUntil DateTime?
+
   inboxStatus Boolean @default(true)
   draftStatus Boolean @default(false)
   sentStatus  Boolean @default(false)
@@ -108,6 +114,8 @@ model Thread {
   @@index([draftStatus])
   @@index([sentStatus])
   @@index([lastMessageDate])
+  @@index([accountId, trashedAt])
+  @@index([accountId, snoozedUntil])
 }
 
 model Email {
@@ -161,6 +169,7 @@ model Email {
   notes String?
 
   @@index([threadId])
+  @@index([fromId])
   @@index([emailLabel])
   @@index([sentAt])
   @@index([categoryId])
@@ -290,6 +299,9 @@ model EmailAddress {
   receivedCc    Email[] @relation("CcEmails")
   receivedBcc   Email[] @relation("BccEmails")
   replyToEmails Email[] @relation("ReplyToEmails")
+
+  // Set when the user unsubscribes from this sender (bulk unsubscribe page).
+  unsubscribedAt DateTime?
 
   accountId String
   account   Account @relation(fields: [accountId], references: [id])

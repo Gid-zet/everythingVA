@@ -11,6 +11,13 @@ import { EmailOrganizer } from "@/lib/email-organizer";
 import { checkAccountAuthStatus } from "@/lib/account-utils";
 import { syncEmailOrganizationToProvider } from "@/lib/provider-email-actions";
 import { getValidToken } from "@/lib/token-refresh";
+import { TRPCError } from "@trpc/server";
+import {
+  setMessagesArchived,
+  setMessagesTrashed,
+  type ProviderResult,
+} from "@/lib/provider-thread-actions";
+import { oneClickUnsubscribe, parseListUnsubscribe } from "@/lib/unsubscribe";
 
 export const authoriseAccountAccess = async (
   accountId: string,
@@ -47,20 +54,107 @@ export const authoriseAccountAccess = async (
   }
 };
 
+/** Not trashed, and not snoozed into the future. */
+const visibleFilter = (): Prisma.ThreadWhereInput => ({
+  trashedAt: null,
+  OR: [{ snoozedUntil: null }, { snoozedUntil: { lte: new Date() } }],
+});
+
 const inboxFilter = (accountId: string): Prisma.ThreadWhereInput => ({
   accountId,
   inboxStatus: true,
+  ...visibleFilter(),
 });
 
 const sentFilter = (accountId: string): Prisma.ThreadWhereInput => ({
   accountId,
   sentStatus: true,
+  ...visibleFilter(),
 });
 
 const draftFilter = (accountId: string): Prisma.ThreadWhereInput => ({
   accountId,
   draftStatus: true,
+  ...visibleFilter(),
 });
+
+const snoozedFilter = (accountId: string): Prisma.ThreadWhereInput => ({
+  accountId,
+  trashedAt: null,
+  snoozedUntil: { gt: new Date() },
+});
+
+const trashFilter = (accountId: string): Prisma.ThreadWhereInput => ({
+  accountId,
+  trashedAt: { not: null },
+});
+
+const threadIdsInput = z.object({
+  accountId: z.string(),
+  threadIds: z.array(z.string()).min(1).max(500),
+});
+
+/** Provider message ids for threads, scoped to the account. */
+async function messageIdsFor(accountId: string, threadIds: string[]) {
+  const emails = await db.email.findMany({
+    where: { threadId: { in: threadIds }, thread: { accountId } },
+    select: { id: true, threadId: true },
+  });
+  return {
+    messageIds: emails.map((e) => e.id),
+    threadIds: [...new Set(emails.map((e) => e.threadId))],
+  };
+}
+
+/**
+ * Apply a provider action, then the local update. All-failed → throw so the
+ * client rolls back; partial failure still commits locally and is reported.
+ */
+async function applyProviderAction(
+  action: () => Promise<ProviderResult>,
+  local: () => Promise<unknown>,
+) {
+  let result: ProviderResult;
+  try {
+    result = await action();
+  } catch (error) {
+    throw new TRPCError({
+      code: "BAD_GATEWAY",
+      message: error instanceof Error ? error.message : "Provider request failed",
+    });
+  }
+  if (result.ok === 0 && result.failed > 0) {
+    throw new TRPCError({
+      code: "BAD_GATEWAY",
+      message: `Your mail provider rejected the change${result.firstError ? `: ${result.firstError}` : ""}`,
+    });
+  }
+  await local();
+  return { synced: result.ok, failed: result.failed };
+}
+
+/**
+ * Resurface threads whose snooze has expired: clear the snooze and move them
+ * back into the provider inbox. Called lazily from the sidebar's count poll.
+ */
+async function wakeSnoozedThreads(accountId: string) {
+  const due = await db.thread.findMany({
+    where: { accountId, snoozedUntil: { lte: new Date() } },
+    select: { id: true },
+    take: 200,
+  });
+  if (!due.length) return 0;
+  const ids = due.map((t) => t.id);
+  await db.thread.updateMany({
+    where: { id: { in: ids }, accountId },
+    data: { snoozedUntil: null, done: false, archivedAt: null },
+  });
+  const { messageIds } = await messageIdsFor(accountId, ids);
+  void setMessagesArchived(accountId, messageIds, false).catch((error) =>
+    console.error("Failed to unarchive woken snoozes:", error),
+  );
+  return ids.length;
+}
 
 export const mailRouter = createTRPCRouter({
   getAccounts: protectedProcedure.query(async ({ ctx }) => {
@@ -124,18 +218,18 @@ export const mailRouter = createTRPCRouter({
         ctx.auth.id,
       );
 
-      let filter: Prisma.ThreadWhereInput = {};
+      let filter: Prisma.ThreadWhereInput = { accountId: account.id };
       if (input.tab === "inbox") {
-        filter = inboxFilter(account.id);
+        filter = { ...inboxFilter(account.id), done: input.done };
       } else if (input.tab === "sent") {
-        filter = sentFilter(account.id);
+        filter = { ...sentFilter(account.id), done: input.done };
       } else if (input.tab === "drafts") {
-        filter = draftFilter(account.id);
+        filter = { ...draftFilter(account.id), done: input.done };
+      } else if (input.tab === "snoozed") {
+        filter = snoozedFilter(account.id);
+      } else if (input.tab === "trash") {
+        filter = trashFilter(account.id);
       }
-
-      filter.done = {
-        equals: input.done,
-      };
 
       // List rows only need the latest message's snippet — full HTML bodies are
       // loaded per-thread by getThreadById when a thread is opened.
@@ -181,12 +275,18 @@ export const mailRouter = createTRPCRouter({
         input.accountId,
         ctx.auth.id,
       );
-      const [inbox, drafts, sent] = await ctx.db.$transaction([
+      // The sidebar polls this every minute, which makes it a cheap place to
+      // resurface expired snoozes without a separate cron.
+      await wakeSnoozedThreads(account.id).catch((error) =>
+        console.error("wakeSnoozedThreads failed:", error),
+      );
+      const [inbox, drafts, sent, snoozed] = await ctx.db.$transaction([
         ctx.db.thread.count({ where: { ...inboxFilter(account.id), done: false } }),
         ctx.db.thread.count({ where: draftFilter(account.id) }),
         ctx.db.thread.count({ where: sentFilter(account.id) }),
+        ctx.db.thread.count({ where: snoozedFilter(account.id) }),
       ]);
-      return { inbox, drafts, sent };
+      return { inbox, drafts, sent, snoozed };
     }),
 
   getThreadById: protectedProcedure
@@ -376,6 +476,287 @@ export const mailRouter = createTRPCRouter({
         where: { id: { in: ids }, accountId: account.id },
         data: { done: true },
       });
+    }),
+
+  // ── Provider-synced triage ────────────────────────────────────────────────
+  archiveThreads: protectedProcedure
+    .input(threadIdsInput)
+    .mutation(async ({ ctx, input }) => {
+      const account = await authoriseAccountAccess(input.accountId, ctx.auth.id);
+      const { messageIds, threadIds } = await messageIdsFor(account.id, input.threadIds);
+      return applyProviderAction(
+        () => setMessagesArchived(account.id, messageIds, true),
+        () =>
+          ctx.db.thread.updateMany({
+            where: { id: { in: threadIds }, accountId: account.id },
+            data: { done: true, archivedAt: new Date() },
+          }),
+      );
+    }),
+  unarchiveThreads: protectedProcedure
+    .input(threadIdsInput)
+    .mutation(async ({ ctx, input }) => {
+      const account = await authoriseAccountAccess(input.accountId, ctx.auth.id);
+      const { messageIds, threadIds } = await messageIdsFor(account.id, input.threadIds);
+      return applyProviderAction(
+        () => setMessagesArchived(account.id, messageIds, false),
+        () =>
+          ctx.db.thread.updateMany({
+            where: { id: { in: threadIds }, accountId: account.id },
+            data: { done: false, archivedAt: null, snoozedUntil: null },
+          }),
+      );
+    }),
+  trashThreads: protectedProcedure
+    .input(threadIdsInput)
+    .mutation(async ({ ctx, input }) => {
+      const account = await authoriseAccountAccess(input.accountId, ctx.auth.id);
+      const { messageIds, threadIds } = await messageIdsFor(account.id, input.threadIds);
+      return applyProviderAction(
+        () => setMessagesTrashed(account.id, messageIds, true),
+        () =>
+          ctx.db.thread.updateMany({
+            where: { id: { in: threadIds }, accountId: account.id },
+            data: { trashedAt: new Date() },
+          }),
+      );
+    }),
+  restoreThreads: protectedProcedure
+    .input(threadIdsInput)
+    .mutation(async ({ ctx, input }) => {
+      const account = await authoriseAccountAccess(input.accountId, ctx.auth.id);
+      const { messageIds, threadIds } = await messageIdsFor(account.id, input.threadIds);
+      return applyProviderAction(
+        () => setMessagesTrashed(account.id, messageIds, false),
+        () =>
+          ctx.db.thread.updateMany({
+            where: { id: { in: threadIds }, accountId: account.id },
+            data: { trashedAt: null },
+          }),
+      );
+    }),
+  /** Snooze = archive at the provider + a local wake-up time. */
+  snoozeThreads: protectedProcedure
+    .input(threadIdsInput.extend({ until: z.date() }))
+    .mutation(async ({ ctx, input }) => {
+      if (input.until.getTime() <= Date.now()) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Snooze time must be in the future" });
+      }
+      const account = await authoriseAccountAccess(input.accountId, ctx.auth.id);
+      const { messageIds, threadIds } = await messageIdsFor(account.id, input.threadIds);
+      return applyProviderAction(
+        () => setMessagesArchived(account.id, messageIds, true),
+        () =>
+          ctx.db.thread.updateMany({
+            where: { id: { in: threadIds }, accountId: account.id },
+            data: { snoozedUntil: input.until, done: false, archivedAt: new Date() },
+          }),
+      );
+    }),
+  unsnoozeThreads: protectedProcedure
+    .input(threadIdsInput)
+    .mutation(async ({ ctx, input }) => {
+      const account = await authoriseAccountAccess(input.accountId, ctx.auth.id);
+      const { messageIds, threadIds } = await messageIdsFor(account.id, input.threadIds);
+      return applyProviderAction(
+        () => setMessagesArchived(account.id, messageIds, false),
+        () =>
+          ctx.db.thread.updateMany({
+            where: { id: { in: threadIds }, accountId: account.id },
+            data: { snoozedUntil: null, done: false, archivedAt: null },
+          }),
+      );
+    }),
+  wakeSnoozedThreads: protectedProcedure
+    .input(z.object({ accountId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const account = await authoriseAccountAccess(input.accountId, ctx.auth.id);
+      return { woken: await wakeSnoozedThreads(account.id) };
+    }),
+
+  // ── Bulk unsubscribe ──────────────────────────────────────────────────────
+  /** Senders ranked by how much mail they've sent this account. */
+  getSenders: protectedProcedure
+    .input(
+      z.object({
+        accountId: z.string(),
+        limit: z.number().min(1).max(100).default(30),
+        /** Offset into the ranking (tRPC's infinite-query cursor). */
+        cursor: z.number().min(0).nullish(),
+      }),
+    )
+    .query(async ({ ctx, input }) => {
+      const account = await authoriseAccountAccess(input.accountId, ctx.auth.id);
+      const received: Prisma.EmailWhereInput = {
+        thread: { accountId: account.id },
+        emailLabel: { not: "sent" },
+        from: { address: { not: account.emailAddress } },
+      };
+
+      const groups = await ctx.db.email.groupBy({
+        by: ["fromId"],
+        where: received,
+        _count: { _all: true },
+        _max: { sentAt: true },
+        orderBy: { _count: { fromId: "desc" } },
+        take: input.limit + 1,
+        skip: input.cursor ?? 0,
+      });
+      const hasMore = groups.length > input.limit;
+      if (hasMore) groups.pop();
+      const fromIds = groups.map((g) => g.fromId);
+      const nextCursor = hasMore ? (input.cursor ?? 0) + input.limit : null;
+      if (!fromIds.length) return { senders: [], nextCursor };
+
+      const [addresses, latest, inboxCounts] = await Promise.all([
+        ctx.db.emailAddress.findMany({
+          where: { id: { in: fromIds }, accountId: account.id },
+          select: { id: true, name: true, address: true, unsubscribedAt: true },
+        }),
+        // Latest message per sender carries the current List-Unsubscribe header.
+        ctx.db.email.findMany({
+          where: { ...received, fromId: { in: fromIds } },
+          distinct: ["fromId"],
+          orderBy: { sentAt: "desc" },
+          select: { fromId: true, internetHeaders: true, subject: true },
+        }),
+        ctx.db.email.groupBy({
+          by: ["fromId"],
+          where: {
+            ...received,
+            fromId: { in: fromIds },
+            thread: { ...inboxFilter(account.id), done: false },
+          },
+          _count: { _all: true },
+        }),
+      ]);
+      const byId = new Map(addresses.map((a) => [a.id, a]));
+      const latestBy = new Map(latest.map((l) => [l.fromId, l]));
+      const inboxBy = new Map(inboxCounts.map((c) => [c.fromId, c._count._all]));
+
+      const senders = groups.flatMap((g) => {
+        const addr = byId.get(g.fromId);
+        if (!addr) return [];
+        const last = latestBy.get(g.fromId);
+        const unsub = parseListUnsubscribe(last?.internetHeaders);
+        return [
+          {
+            fromId: g.fromId,
+            name: addr.name,
+            address: addr.address,
+            unsubscribedAt: addr.unsubscribedAt,
+            emailCount: g._count._all,
+            inboxCount: inboxBy.get(g.fromId) ?? 0,
+            lastSentAt: g._max.sentAt,
+            lastSubject: last?.subject ?? null,
+            unsubscribe: unsub
+              ? { oneClick: unsub.oneClick, hasUrl: !!unsub.url, hasMailto: !!unsub.mailto }
+              : null,
+          },
+        ];
+      });
+      return { senders, nextCursor };
+    }),
+
+  /**
+   * Unsubscribe from a sender using its List-Unsubscribe header: RFC 8058
+   * one-click POST, else a mailto request sent from the user's mailbox, else
+   * hand the https link back for the user to open.
+   */
+  unsubscribeSender: protectedProcedure
+    .input(z.object({ accountId: z.string(), fromId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const account = await authoriseAccountAccess(input.accountId, ctx.auth.id);
+      const sender = await ctx.db.emailAddress.findFirst({
+        where: { id: input.fromId, accountId: account.id },
+      });
+      if (!sender) throw new TRPCError({ code: "NOT_FOUND", message: "Sender not found" });
+
+      const recent = await ctx.db.email.findMany({
+        where: { fromId: sender.id, thread: { accountId: account.id } },
+        orderBy: { sentAt: "desc" },
+        take: 10,
+        select: { internetHeaders: true },
+      });
+      const options = recent
+        .map((e) => parseListUnsubscribe(e.internetHeaders))
+        .find((o) => o !== null);
+      if (!options) {
+        throw new TRPCError({
+          code: "PRECONDITION_FAILED",
+          message: "This sender doesn't provide an unsubscribe link",
+        });
+      }
+
+      const markUnsubscribed = () =>
+        ctx.db.emailAddress.update({
+          where: { id: sender.id },
+          data: { unsubscribedAt: new Date() },
+        });
+
+      if (options.oneClick && options.url) {
+        const ok = await oneClickUnsubscribe(options.url).catch(() => false);
+        if (ok) {
+          await markUnsubscribed();
+          return { method: "one-click" as const };
+        }
+      }
+      if (options.mailto) {
+        const acc = new Account(account.token, account.id);
+        await acc.sendEmail({
+          from: { name: account.name, address: account.emailAddress },
+          to: [{ address: options.mailto.to, name: "" }],
+          subject: options.mailto.subject,
+          body: options.mailto.body,
+        });
+        await markUnsubscribed();
+        return { method: "mailto" as const };
+      }
+      if (options.url) {
+        // A plain https link needs the user to confirm on the sender's page,
+        // so it is not marked unsubscribed until they do (markUnsubscribed).
+        return { method: "link" as const, url: options.url };
+      }
+      throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Unsubscribe failed" });
+    }),
+
+  /** For link-based unsubscribes the user completes on the sender's site. */
+  markSenderUnsubscribed: protectedProcedure
+    .input(z.object({ accountId: z.string(), fromId: z.string(), unsubscribed: z.boolean() }))
+    .mutation(async ({ ctx, input }) => {
+      const account = await authoriseAccountAccess(input.accountId, ctx.auth.id);
+      await ctx.db.emailAddress.updateMany({
+        where: { id: input.fromId, accountId: account.id },
+        data: { unsubscribedAt: input.unsubscribed ? new Date() : null },
+      });
+    }),
+
+  /** Archive every inbox thread from a sender; returns ids so the UI can undo. */
+  archiveAllFromSender: protectedProcedure
+    .input(z.object({ accountId: z.string(), fromId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const account = await authoriseAccountAccess(input.accountId, ctx.auth.id);
+      const threads = await ctx.db.thread.findMany({
+        where: {
+          ...inboxFilter(account.id),
+          done: false,
+          emails: { some: { fromId: input.fromId } },
+        },
+        select: { id: true },
+        take: 500,
+      });
+      const ids = threads.map((t) => t.id);
+      if (!ids.length) return { threadIds: [] as string[], synced: 0, failed: 0 };
+      const { messageIds } = await messageIdsFor(account.id, ids);
+      const result = await applyProviderAction(
+        () => setMessagesArchived(account.id, messageIds, true),
+        () =>
+          ctx.db.thread.updateMany({
+            where: { id: { in: ids }, accountId: account.id },
+            data: { done: true, archivedAt: new Date() },
+          }),
+      );
+      return { threadIds: ids, ...result };
     }),
   getEmailDetails: protectedProcedure
     .input(

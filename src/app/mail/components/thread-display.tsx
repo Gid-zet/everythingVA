@@ -1,4 +1,16 @@
-import { Check, ChevronDown, ChevronUp, MailOpen, Undo2, X } from "lucide-react";
+import {
+  AlarmClock,
+  Archive,
+  ArchiveRestore,
+  ChevronDown,
+  ChevronUp,
+  Inbox,
+  MailOpen,
+  Trash2,
+  Undo2,
+  X,
+} from "lucide-react";
+import { format } from "date-fns";
 import { useAtom } from "jotai";
 
 import { Button } from "@/components/ui/button";
@@ -14,6 +26,7 @@ import { useThreadActions } from "../use-thread-actions";
 import { isSearchingAtom } from "@/lib/atoms";
 import SearchDisplay from "./search-display";
 import ReplyBox from "./reply-box";
+import { SnoozeMenu } from "./snooze-menu";
 
 function Kbd({ children }: { children: React.ReactNode }) {
   return (
@@ -23,11 +36,49 @@ function Kbd({ children }: { children: React.ReactNode }) {
   );
 }
 
+function ToolbarButton({
+  icon,
+  label,
+  hint,
+  kbd,
+  disabled,
+  onClick,
+}: {
+  icon: React.ReactNode;
+  label?: string;
+  hint: string;
+  kbd?: string;
+  disabled?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          variant="ghost"
+          size={label ? "sm" : "icon"}
+          className={label ? "h-8 gap-1.5 px-2.5 text-[13px]" : "size-8"}
+          disabled={disabled}
+          onClick={onClick}
+          aria-label={label ? undefined : hint}
+        >
+          {icon}
+          {label}
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent>
+        {hint}
+        {kbd && <Kbd>{kbd}</Kbd>}
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
 export function ThreadDisplay() {
   const [threadId, setThreadId] = useThread();
-  const { threads, done } = useThreads();
+  const { threads, mode } = useThreads();
   const [isSearching] = useAtom(isSearchingAtom);
-  const { markDone, markUndone } = useThreadActions();
+  const actions = useThreadActions();
   const { data: thread, isLoading } = useCurrentThread(threadId);
 
   const idx = threads.findIndex((t) => t.id === threadId);
@@ -46,26 +97,74 @@ export function ThreadDisplay() {
     <div className="flex h-full flex-col bg-background">
       {/* Toolbar */}
       <div className="flex h-[52px] items-center gap-1 border-b px-3">
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-8 gap-1.5 px-2.5 text-[13px]"
+        {mode === "active" && (
+          <>
+            <ToolbarButton
+              icon={<Archive className="size-4" />}
+              label="Archive"
+              hint="Archive"
+              kbd="E"
               disabled={!thread}
-              onClick={() =>
-                threadId && void (done ? markUndone : markDone)([threadId])
-              }
+              onClick={() => threadId && void actions.archive([threadId])}
+            />
+            <SnoozeMenu
+              disabled={!thread}
+              onSnooze={(until) => threadId && void actions.snooze([threadId], until)}
             >
-              {done ? <Undo2 className="size-4" /> : <Check className="size-4" />}
-              {done ? "Move to inbox" : "Done"}
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>
-            {done ? "Move back to inbox" : "Mark done"}
-            <Kbd>{done ? "U" : "D"}</Kbd>
-          </TooltipContent>
-        </Tooltip>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-8 gap-1.5 px-2.5 text-[13px]"
+                disabled={!thread}
+              >
+                <AlarmClock className="size-4" />
+                Snooze
+              </Button>
+            </SnoozeMenu>
+          </>
+        )}
+        {mode === "done" && (
+          <ToolbarButton
+            icon={<Undo2 className="size-4" />}
+            label="Move to inbox"
+            hint="Move back to inbox"
+            kbd="U"
+            disabled={!thread}
+            onClick={() => threadId && void actions.unarchive([threadId])}
+          />
+        )}
+        {mode === "snoozed" && (
+          <ToolbarButton
+            icon={<Inbox className="size-4" />}
+            label="Unsnooze"
+            hint="Move back to inbox now"
+            disabled={!thread}
+            onClick={() => threadId && void actions.unsnooze([threadId])}
+          />
+        )}
+        {mode === "trash" ? (
+          <ToolbarButton
+            icon={<ArchiveRestore className="size-4" />}
+            label="Restore"
+            hint="Restore from trash"
+            disabled={!thread}
+            onClick={() => threadId && void actions.restore([threadId])}
+          />
+        ) : (
+          <ToolbarButton
+            icon={<Trash2 className="size-4" />}
+            hint="Delete"
+            kbd="#"
+            disabled={!thread}
+            onClick={() => threadId && void actions.trash([threadId])}
+          />
+        )}
+        {mode === "snoozed" && thread?.snoozedUntil && (
+          <span className="ml-1 inline-flex items-center gap-1 rounded-md bg-brand-soft px-1.5 py-0.5 text-[11px] font-medium text-brand">
+            <AlarmClock className="size-3" />
+            {format(new Date(thread.snoozedUntil), "EEE, MMM d 'at' h:mm a")}
+          </span>
+        )}
 
         <div className="ml-auto flex items-center gap-0.5">
           {thread && idx !== -1 && (

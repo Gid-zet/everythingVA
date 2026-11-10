@@ -3,6 +3,9 @@ import { getQueryKey } from "@trpc/react-query";
 import React from "react";
 import { useLocalStorage } from "usehooks-ts";
 
+/** Which triage actions apply to the list currently shown. */
+export type ListMode = "active" | "done" | "snoozed" | "trash";
+
 export type ThreadListItem =
   RouterOutputs["mail"]["getThreads"]["threads"][number];
 
@@ -37,6 +40,9 @@ const useThreads = () => {
     refetchOnWindowFocus: true,
   });
 
+  const mode: ListMode =
+    tab === "trash" ? "trash" : tab === "snoozed" ? "snoozed" : done ? "done" : "active";
+
   const threads = React.useMemo(
     () => query.data?.pages.flatMap((p) => p.threads) ?? [],
     [query.data],
@@ -56,6 +62,7 @@ const useThreads = () => {
     accountId,
     done,
     tab,
+    mode,
   };
 };
 

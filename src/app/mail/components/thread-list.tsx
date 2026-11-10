@@ -6,7 +6,17 @@ import {
   isYesterday,
   formatDistanceToNowStrict,
 } from "date-fns";
-import { Check, Inbox, Loader2, Paperclip, Undo2 } from "lucide-react";
+import {
+  AlarmClock,
+  Archive,
+  ArchiveRestore,
+  Check,
+  Inbox,
+  Loader2,
+  Paperclip,
+  Trash2,
+  Undo2,
+} from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { useThread } from "@/app/mail/use-thread";
@@ -41,10 +51,11 @@ export function ThreadList() {
     isFetchingNextPage,
     done,
     tab,
+    mode,
   } = useThreads();
   const [threadId, setThreadId] = useThread();
   const { selectedThreadIds, visualMode } = useVim();
-  const { markDone, markUndone } = useThreadActions();
+  const actions = useThreadActions();
 
   // Infinite scroll: load the next page when the sentinel scrolls into view.
   const sentinelRef = React.useRef<HTMLDivElement>(null);
@@ -81,20 +92,36 @@ export function ThreadList() {
     return (
       <div className="flex h-[calc(100vh-140px)] flex-col items-center justify-center gap-3 px-8 text-center">
         <div className="flex size-12 items-center justify-center rounded-2xl bg-brand-soft text-brand">
-          {done ? <Check className="size-5" /> : <Inbox className="size-5" />}
+          {mode === "done" ? (
+            <Check className="size-5" />
+          ) : mode === "snoozed" ? (
+            <AlarmClock className="size-5" />
+          ) : mode === "trash" ? (
+            <Trash2 className="size-5" />
+          ) : (
+            <Inbox className="size-5" />
+          )}
         </div>
         <div>
           <p className="text-sm font-medium">
-            {done
-              ? "Nothing marked done yet"
-              : tab === "inbox"
-                ? "You're all caught up"
-                : `No ${tab} yet`}
+            {mode === "done"
+              ? "Nothing archived yet"
+              : mode === "snoozed"
+                ? "No snoozed threads"
+                : mode === "trash"
+                  ? "Trash is empty"
+                  : tab === "inbox"
+                    ? "You're all caught up"
+                    : `No ${tab} yet`}
           </p>
           <p className="mt-1 text-xs text-muted-foreground">
-            {done
-              ? "Press D on a thread to mark it done."
-              : "New mail will show up here automatically."}
+            {mode === "done"
+              ? "Press E on a thread to archive it."
+              : mode === "snoozed"
+                ? "Press H on a thread to snooze it until later."
+                : mode === "trash"
+                  ? "Threads you delete land here."
+                  : "New mail will show up here automatically."}
           </p>
         </div>
       </div>
@@ -115,7 +142,10 @@ export function ThreadList() {
                 const isSelected = threadId === item.id;
                 const isMarked =
                   visualMode && selectedThreadIds.includes(item.id);
-                const unread = last?.status === "unread" && !done;
+                const unread = last?.status === "unread" && mode === "active";
+                const snoozedUntil = item.snoozedUntil
+                  ? new Date(item.snoozedUntil)
+                  : null;
                 const sentAt = new Date(last?.sentAt ?? item.lastMessageDate);
                 const sender =
                   last?.from?.name || last?.from?.address || "Unknown";
@@ -175,7 +205,14 @@ export function ThreadList() {
                             className="ml-auto shrink-0 text-[11px] tabular-nums text-muted-foreground group-hover/row:opacity-0"
                             title={`${format(sentAt, "PPpp")} · ${formatDistanceToNowStrict(sentAt, { addSuffix: true })}`}
                           >
-                            {shortTime(sentAt)}
+                            {mode === "snoozed" && snoozedUntil ? (
+                              <span className="inline-flex items-center gap-1 text-brand">
+                                <AlarmClock className="size-3" />
+                                {shortTime(snoozedUntil)}
+                              </span>
+                            ) : (
+                              shortTime(sentAt)
+                            )}
                           </span>
                         </div>
                         <div className="mt-0.5 flex items-center gap-1.5">
@@ -198,23 +235,49 @@ export function ThreadList() {
                         </p>
                       </div>
 
-                      {/* Hover quick action */}
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          void (done ? markUndone : markDone)([item.id]);
-                        }}
-                        className="absolute right-2.5 top-2 hidden size-7 items-center justify-center rounded-lg border bg-background text-muted-foreground shadow-sm transition-colors hover:text-foreground group-hover/row:flex"
-                        aria-label={done ? "Move to inbox" : "Mark done"}
-                        title={done ? "Move to inbox (U)" : "Mark done (D)"}
-                      >
-                        {done ? (
-                          <Undo2 className="size-3.5" />
-                        ) : (
-                          <Check className="size-3.5" />
+                      {/* Hover quick actions */}
+                      <div className="absolute right-2.5 top-2 hidden items-center gap-0.5 rounded-lg border bg-background p-0.5 shadow-sm group-hover/row:flex">
+                        {mode === "active" && (
+                          <RowAction
+                            label="Archive (E)"
+                            onClick={() => void actions.archive([item.id])}
+                          >
+                            <Archive className="size-3.5" />
+                          </RowAction>
                         )}
-                      </button>
+                        {mode === "done" && (
+                          <RowAction
+                            label="Move to inbox (U)"
+                            onClick={() => void actions.unarchive([item.id])}
+                          >
+                            <Undo2 className="size-3.5" />
+                          </RowAction>
+                        )}
+                        {mode === "snoozed" && (
+                          <RowAction
+                            label="Unsnooze"
+                            onClick={() => void actions.unsnooze([item.id])}
+                          >
+                            <Inbox className="size-3.5" />
+                          </RowAction>
+                        )}
+                        {mode === "trash" ? (
+                          <RowAction
+                            label="Restore"
+                            onClick={() => void actions.restore([item.id])}
+                          >
+                            <ArchiveRestore className="size-3.5" />
+                          </RowAction>
+                        ) : (
+                          <RowAction
+                            label="Delete (#)"
+                            onClick={() => void actions.trash([item.id])}
+                            destructive
+                          >
+                            <Trash2 className="size-3.5" />
+                          </RowAction>
+                        )}
+                      </div>
                     </div>
                   </li>
                 );
@@ -235,6 +298,36 @@ export function ThreadList() {
         </div>
       </div>
     </div>
+  );
+}
+
+function RowAction({
+  label,
+  onClick,
+  destructive,
+  children,
+}: {
+  label: string;
+  onClick: () => void;
+  destructive?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        onClick();
+      }}
+      className={cn(
+        "flex size-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-foreground/[0.05]",
+        destructive ? "hover:text-destructive" : "hover:text-foreground",
+      )}
+      aria-label={label}
+      title={label}
+    >
+      {children}
+    </button>
   );
 }
 

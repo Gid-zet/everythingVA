@@ -23,10 +23,9 @@ const useVim = () => {
   const [threadId, setThreadId] = useThread();
   const [accountId] = useLocalStorage("accountId", "");
   const [tab] = useLocalStorage("normalhuman-tab", "inbox");
-  const [done] = useLocalStorage("normalhuman-done", false);
-  const { threads: data } = useThreads();
+  const { threads: data, mode } = useThreads();
 
-  const { markDone, markUndone } = useThreadActions();
+  const actions = useThreadActions();
 
   const [visualMode, setVisualMode] = useAtom(visualModeAtom);
   const [visualModeStartId, setVisualModeStartId] = useAtom(
@@ -86,6 +85,17 @@ const useVim = () => {
     );
   };
 
+  const withTargets = (fn: (ids: string[]) => unknown) => {
+    if (!threadId) return;
+    void fn(visualMode && selectedThreadIds.length ? selectedThreadIds : [threadId]);
+    setVisualMode(false);
+    setVisualModeStartId(null);
+  };
+  const archiveOrDone = () => {
+    if (mode !== "active") return;
+    withTargets(actions.archive);
+  };
+
   let handler = (event: KeyboardEvent) => {
     if (isInputElement(document.activeElement)) {
       return;
@@ -143,19 +153,23 @@ const useVim = () => {
         setVisualMode(false);
         setVisualModeStartId(null);
       },
-      d: () => {
-        if (done) return;
-        if (!threadId || !selectedThreadIds) return;
-        void markDone(visualMode ? selectedThreadIds : [threadId]);
-        setVisualMode(false);
-        setVisualModeStartId(null);
-      },
+      d: () => archiveOrDone(),
+      e: () => archiveOrDone(),
       u: () => {
-        if (!done) return;
-        if (!threadId || !selectedThreadIds) return;
-        void markUndone(visualMode ? selectedThreadIds : [threadId]);
-        setVisualMode(false);
-        setVisualModeStartId(null);
+        if (mode !== "done") return;
+        withTargets(actions.unarchive);
+      },
+      // Snooze from the keyboard: tomorrow 8am (the toolbar has the full picker).
+      h: () => {
+        if (mode !== "active") return;
+        const until = new Date();
+        until.setDate(until.getDate() + 1);
+        until.setHours(8, 0, 0, 0);
+        withTargets((ids) => actions.snooze(ids, until));
+      },
+      "Shift+#": () => {
+        if (mode === "trash") return;
+        withTargets(actions.trash);
       },
     })(event);
   };

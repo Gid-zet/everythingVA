@@ -135,13 +135,38 @@ async function upsertEmail(
       .filter(Boolean);
 
     // 2. Upsert Thread
+    // Delta syncs re-deliver messages whenever they change (including when we
+    // archive them), so triage state is only reset by a genuinely new message
+    // that lands in the inbox — the same way Gmail resurfaces a thread.
+    const [existingThread, existingEmail] = await Promise.all([
+      db.thread.findUnique({
+        where: { id: email.threadId },
+        select: { lastMessageDate: true },
+      }),
+      db.email.findUnique({ where: { id: email.id }, select: { id: true } }),
+    ]);
+    const sentAt = new Date(email.sentAt);
+    const isNewInboxMessage =
+      !existingEmail &&
+      emailLabelType === "inbox" &&
+      !email.sysLabels.includes("trash");
+    const inProviderTrash = email.sysLabels.includes("trash");
+    const triageReset: Prisma.ThreadUncheckedUpdateInput = isNewInboxMessage
+      ? { done: false, archivedAt: null, snoozedUntil: null, trashedAt: null }
+      : inProviderTrash
+        ? { trashedAt: new Date() }
+        : {};
+
     const thread = await db.thread.upsert({
       where: { id: email.threadId },
       update: {
         subject: email.subject,
         accountId,
-        lastMessageDate: new Date(email.sentAt),
-        done: false,
+        lastMessageDate:
+          existingThread && existingThread.lastMessageDate > sentAt
+            ? existingThread.lastMessageDate
+            : sentAt,
+        ...triageReset,
         participantIds: [
           ...new Set([
             fromAddress.id,
