@@ -8,7 +8,6 @@ import {
   ResizablePanel,
   ResizablePanelGroup,
 } from "@/components/ui/resizable";
-import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AccountSwitcher } from "@/app/mail/components/account-switcher";
@@ -23,6 +22,8 @@ import AskAI from "./ask-ai";
 import { EmailOrganizer } from "./email-organizer";
 import AuthoriseButton from "@/components/authorise-button";
 import PushCategoriesButton from "@/components/push-categories-button";
+import ComposeButton from "./compose-button";
+import SidebarFooter from "./sidebar-footer";
 
 interface MailProps {
   defaultLayout: number[] | undefined;
@@ -42,6 +43,8 @@ export function Mail({
   
   // Normalize tab value for comparison (handle "email setup" or "setup")
   const isSetupTab = tab === "setup" || tab === "email setup";
+  const tabTitle =
+    tab === "drafts" ? "Drafts" : tab === "sent" ? "Sent" : "Inbox";
 
   // Clean up corrupted cookies on mount
   React.useEffect(() => {
@@ -125,6 +128,7 @@ export function Mail({
             }
           }}
           className={cn(
+            "bg-sidebar",
             isCollapsed &&
               "min-w-[50px] transition-all duration-300 ease-in-out",
           )}
@@ -133,18 +137,21 @@ export function Mail({
             <div
               className={cn(
                 "flex h-[52px] items-center justify-center",
-                isCollapsed ? "h-[52px]" : "px-2",
+                isCollapsed ? "h-[52px]" : "px-3",
               )}
             >
               <AccountSwitcher isCollapsed={isCollapsed} />
             </div>
-            <Separator />
+            <div className={cn("pb-1", isCollapsed ? "flex justify-center" : "px-3")}>
+              <ComposeButton isCollapsed={isCollapsed} />
+            </div>
             <SideBar isCollapsed={isCollapsed} />
             <div className="flex-1"></div>
             <AskAI isCollapsed={isCollapsed} />
+            <SidebarFooter isCollapsed={isCollapsed} />
           </div>
         </ResizablePanel>
-        <ResizableHandle withHandle />
+        <ResizableHandle />
         <ResizablePanel defaultSize={defaultLayout[1]} minSize={30}>
           {tab === "organizer" ? (
             <div className="h-full overflow-auto">
@@ -154,7 +161,7 @@ export function Mail({
             <div className="flex h-full flex-col items-center justify-center p-8">
               <div className="w-full max-w-md space-y-4">
                 <div className="mb-6 text-center">
-                  <h2 className="text-2xl font-bold">Email Setup</h2>
+                  <h2 className="text-2xl font-semibold tracking-tight">Email Setup</h2>
                   <p className="mt-2 text-muted-foreground">
                     Connect your email account to get started
                   </p>
@@ -183,24 +190,25 @@ export function Mail({
                 }
               }}
             >
-              <div className="flex items-center px-4 py-2">
-                <h1 className="text-xl font-bold">Inbox</h1>
-                <TabsList className="ml-auto">
+              <div className="flex h-[52px] items-center border-b px-4">
+                <h1 className="text-[15px] font-semibold tracking-tight">
+                  {tabTitle}
+                </h1>
+                <TabsList className="ml-auto h-8 rounded-lg p-0.5">
                   <TabsTrigger
                     value="inbox"
-                    className="text-zinc-600 dark:text-zinc-200"
+                    className="h-7 rounded-md px-3 text-xs"
                   >
-                    Inbox
+                    {tabTitle}
                   </TabsTrigger>
                   <TabsTrigger
                     value="done"
-                    className="text-zinc-600 dark:text-zinc-200"
+                    className="h-7 rounded-md px-3 text-xs"
                   >
                     Done
                   </TabsTrigger>
                 </TabsList>
               </div>
-              <Separator />
               <SearchBar />
               <TabsContent value="inbox" className="m-0">
                 <ThreadList />
@@ -211,7 +219,7 @@ export function Mail({
             </Tabs>
           )}
         </ResizablePanel>
-        <ResizableHandle withHandle />
+        <ResizableHandle />
         <ResizablePanel defaultSize={defaultLayout[2]} minSize={30}>
           {isSetupTab ? (
             <div className="flex h-full items-center justify-center p-8">

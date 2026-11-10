@@ -11,6 +11,7 @@ import { toast } from "sonner";
 import { getQueryKey } from "@trpc/react-query";
 import useRefetch from "@/hooks/use-refetch";
 import useThreads from "../../use-threads";
+import { useThreadActions } from "../../use-thread-actions";
 import {
   isSearchingAtom,
   visualModeAtom,
@@ -23,97 +24,9 @@ const useVim = () => {
   const [accountId] = useLocalStorage("accountId", "");
   const [tab] = useLocalStorage("normalhuman-tab", "inbox");
   const [done] = useLocalStorage("normalhuman-done", false);
-  const { threads: data, queryKey, refetch } = useThreads();
+  const { threads: data } = useThreads();
 
-  const setUndone = api.mail.setUndone.useMutation({
-    onMutate: async (payload) => {
-      if (!payload.threadId && !payload.threadIds) return;
-      if (!done) return;
-      toast.success("Undone!");
-      await queryClient.cancelQueries({ queryKey });
-      const previousData =
-        queryClient.getQueryData<RouterOutputs["mail"]["getThreads"]>(queryKey);
-      queryClient.setQueryData(
-        queryKey,
-        (data: RouterOutputs["mail"]["getThreads"] | undefined) => {
-          if (!data) return data;
-          const threadIds = visualMode ? selectedThreadIds : [payload.threadId];
-          const newData = data.filter((t) => !threadIds.includes(t.id));
-
-          if (visualMode) {
-            setVisualMode(false);
-            setVisualModeStartId(null);
-            const currentIndex = data.findIndex(
-              (t) => t.id === threadIds.at(-1),
-            );
-            setThreadId(
-              newData[currentIndex - threadIds.length + 1]?.id ?? null,
-            );
-          } else {
-            const currentIndex = data.findIndex((t) => t.id === threadId);
-            if (currentIndex !== -1 && threadIds.includes(threadId ?? "")) {
-              const nextThreadId =
-                newData[currentIndex]?.id ??
-                newData[currentIndex - 1]?.id ??
-                null;
-              setThreadId(nextThreadId);
-            }
-          }
-
-          return newData;
-        },
-      );
-      return previousData;
-    },
-    onSettled: () => {
-      refetch();
-    },
-  });
-
-  const setDone = api.mail.setDone.useMutation({
-    onMutate: async (payload) => {
-      if (done) return;
-      if (!payload.threadId && !payload.threadIds) return;
-      toast.success("Done!");
-      await queryClient.cancelQueries({ queryKey });
-      const previousData =
-        queryClient.getQueryData<RouterOutputs["mail"]["getThreads"]>(queryKey);
-      queryClient.setQueryData(
-        queryKey,
-        (data: RouterOutputs["mail"]["getThreads"] | undefined) => {
-          if (!data) return data;
-          const threadIds = visualMode ? selectedThreadIds : [payload.threadId];
-          const newData = data.filter((t) => !threadIds.includes(t.id));
-
-          if (visualMode) {
-            setVisualMode(false);
-            setVisualModeStartId(null);
-            const currentIndex = data.findIndex(
-              (t) => t.id === threadIds.at(-1),
-            );
-            setThreadId(
-              newData[currentIndex - threadIds.length + 1]?.id ?? null,
-            );
-          } else {
-            const currentIndex = data.findIndex((t) => t.id === threadId);
-            if (currentIndex !== -1 && threadIds.includes(threadId ?? "")) {
-              const nextThreadId =
-                newData[currentIndex]?.id ??
-                newData[currentIndex - 1]?.id ??
-                null;
-              setThreadId(nextThreadId);
-            }
-          }
-
-          return newData;
-        },
-      );
-      return previousData;
-    },
-    onSettled: () => {
-      refetch();
-    },
-  });
+  const { markDone, markUndone } = useThreadActions();
 
   const [visualMode, setVisualMode] = useAtom(visualModeAtom);
   const [visualModeStartId, setVisualModeStartId] = useAtom(
@@ -233,20 +146,16 @@ const useVim = () => {
       d: () => {
         if (done) return;
         if (!threadId || !selectedThreadIds) return;
-        if (visualMode) {
-          setDone.mutate({ accountId, threadIds: selectedThreadIds });
-        } else {
-          setDone.mutate({ accountId, threadId });
-        }
+        void markDone(visualMode ? selectedThreadIds : [threadId]);
+        setVisualMode(false);
+        setVisualModeStartId(null);
       },
       u: () => {
         if (!done) return;
         if (!threadId || !selectedThreadIds) return;
-        if (visualMode) {
-          setUndone.mutate({ accountId, threadIds: selectedThreadIds });
-        } else {
-          setUndone.mutate({ accountId, threadId });
-        }
+        void markUndone(visualMode ? selectedThreadIds : [threadId]);
+        setVisualMode(false);
+        setVisualModeStartId(null);
       },
     })(event);
   };

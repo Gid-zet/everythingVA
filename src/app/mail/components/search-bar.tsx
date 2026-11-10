@@ -38,13 +38,13 @@ const SearchBar = () => {
   }, [setIsSearching, searchValue, isSearching]);
 
   return (
-    <div className="bg-background/95 p-4 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+    <div className="px-3 pb-1 pt-3">
       <motion.div className="relative" layoutId="search-bar">
-        <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+        <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
         <Input
           ref={ref}
-          placeholder="Search"
-          className="pl-8"
+          placeholder="Search mail"
+          className="h-9 rounded-lg border-transparent bg-muted/60 pl-9 pr-16 text-[13px] shadow-none transition-colors placeholder:text-muted-foreground focus-visible:border-brand/40 focus-visible:bg-background focus-visible:ring-4 focus-visible:ring-brand/10 focus-visible:ring-offset-0"
           value={searchValue}
           onChange={(e) => setSearchValue(e.target.value)}
           onFocus={() => setIsSearching(true)}
@@ -52,17 +52,17 @@ const SearchBar = () => {
         />
         <div className="absolute right-2 top-2.5 flex items-center gap-2">
           {isFetching && (
-            <Loader2 className="h-4 w-4 animate-spin text-gray-400" />
+            <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
           )}
           <button
-            className="rounded-sm hover:bg-gray-800"
+            className="rounded-sm text-muted-foreground hover:text-foreground"
             onClick={() => {
               setSearchValue("");
               setIsSearching(false);
               ref.current?.blur();
             }}
           >
-            <X className="size-4 text-gray-400" />
+            {searchValue ? <X className="size-4" /> : <kbd className="rounded border bg-background px-1.5 font-sans text-[10px]">/</kbd>}
           </button>
         </div>
       </motion.div>

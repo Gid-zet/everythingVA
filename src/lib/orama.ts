@@ -46,9 +46,13 @@ export class OramaManager {
     }
   }
 
+  /**
+   * Inserts a document into the in-memory index. Call `saveIndex()` once after a
+   * batch of inserts — persisting after every insert rewrote the whole index to
+   * Postgres per email (O(n²) writes).
+   */
   async insert(document: any) {
     await insert(this.orama, document);
-    await this.saveIndex();
   }
 
   async vectorSearch({
@@ -93,51 +97,3 @@ export class OramaManager {
     });
   }
 }
-
-// Usage example:
-async function main() {
-  const oramaManager = new OramaManager("67358");
-  await oramaManager.initialize();
-
-  // Insert a document
-  const emails = await db.email.findMany({
-    where: {
-      thread: { accountId: "67358" },
-    },
-    select: {
-      subject: true,
-      bodySnippet: true,
-      body: true,
-      from: { select: { address: true, name: true } },
-      to: { select: { address: true, name: true } },
-      sentAt: true,
-      threadId: true,
-    },
-    take: 100,
-  });
-
-  await Promise.all(
-    emails.map(async (email) => {
-      const bodyEmbedding = await getEmbeddings(email.bodySnippet || "");
-      await oramaManager.insert({
-        title: email.subject || "",
-        body: email.bodySnippet || "",
-        rawBody: email.body || "",
-        from: `${email.from.name} <${email.from.address}>`,
-        to: email.to.map((t) => `${t.name} <${t.address}>`),
-        sentAt: email.sentAt.getTime().toString(),
-        embeddings: bodyEmbedding,
-        threadId: email.threadId,
-      });
-    }),
-  );
-
-  // Search
-  const searchResults = await oramaManager.search({
-    term: "cascading",
-  });
-
-  console.log(searchResults.hits.map((hit) => hit.document));
-}
-
-// main().catch(console.error);

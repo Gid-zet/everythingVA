@@ -68,9 +68,8 @@ const WebhookDebugger = () => {
     return (
         <Dialog>
             <DialogTrigger asChild>
-                <Button>
-                    <Webhook className="size-4 mr-1" />
-                    Debug Webhooks
+                <Button variant="ghost" size="icon" className="size-8 text-muted-foreground hover:text-foreground" aria-label="Debug webhooks" title="Debug webhooks (dev only)">
+                    <Webhook className="size-4" />
                 </Button>
             </DialogTrigger>
             <DialogContent>

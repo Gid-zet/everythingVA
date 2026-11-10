@@ -29,7 +29,13 @@ export const POST = async (req: NextRequest) => {
     .update(basestring)
     .digest("hex");
 
-  if (signature !== expectedSignature) {
+  const sigBuf = Buffer.from(signature);
+  const expectedBuf = Buffer.from(expectedSignature);
+  if (
+    !AURINKO_SIGNING_SECRET ||
+    sigBuf.length !== expectedBuf.length ||
+    !crypto.timingSafeEqual(sigBuf, expectedBuf)
+  ) {
     return new Response("Unauthorized", { status: 401 });
   }
   type AurinkoNotification = {

@@ -16,7 +16,7 @@ import { readStreamableValue } from "ai/rsc"
 import { Bot } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
-import useThreads from "../../use-threads"
+import useThreads, { useCurrentThread } from "../../use-threads"
 import { useThread } from "../../use-thread"
 import { turndown } from '@/lib/turndown'
 
@@ -28,9 +28,9 @@ type Props = {
 const AIComposeButton = (props: Props) => {
     const [prompt, setPrompt] = React.useState('')
     const [open, setOpen] = React.useState(false)
-    const { account, threads } = useThreads()
+    const { account } = useThreads()
     const [threadId] = useThread();
-    const thread = threads?.find(t => t.id === threadId)
+    const { data: thread } = useCurrentThread(threadId)
     const aiGenerate = async (prompt: string) => {
         let context: string | undefined = ''
         if (!props.isComposing) {

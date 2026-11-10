@@ -21,7 +21,7 @@ import { EmailAttachment } from "./email-editor/file-attachment";
 import { processAttachments, checkAttachmentLimits } from "@/lib/file-utils";
 import ErrorBoundary from "@/components/error-boundary";
 
-const ComposeButton = () => {
+const ComposeButton = ({ isCollapsed = false }: { isCollapsed?: boolean }) => {
   const [open, setOpen] = React.useState(false);
   const [accountId] = useLocalStorage("accountId", "");
   const [toValues, setToValues] = React.useState<
@@ -141,10 +141,16 @@ const ComposeButton = () => {
   return (
     <Drawer open={open} onOpenChange={setOpen}>
       <DrawerTrigger asChild>
-        <Button>
-          <Pencil className="mr-1 size-4" />
-          Compose
-        </Button>
+        {isCollapsed ? (
+          <Button size="icon" className="size-9 rounded-lg" aria-label="Compose">
+            <Pencil className="size-4" />
+          </Button>
+        ) : (
+          <Button className="h-9 w-full justify-start gap-2 rounded-lg px-3 text-[13px] shadow-sm">
+            <Pencil className="size-4" />
+            Compose
+          </Button>
+        )}
       </DrawerTrigger>
       <DrawerContent className="">
         <DrawerHeader>

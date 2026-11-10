@@ -20,7 +20,7 @@ const StripeButton = () => {
         }
     }
     return (
-        <Button variant={'outline'} size='lg' onClick={handleClick}>{isSubscribed ? 'Manage Subscription' : 'Upgrade Plan'}</Button>
+        <Button size='sm' onClick={handleClick} className='h-8 w-full bg-white text-zinc-900 hover:bg-white/90'>{isSubscribed ? 'Manage Subscription' : 'Upgrade Plan'}</Button>
     )
 }
 

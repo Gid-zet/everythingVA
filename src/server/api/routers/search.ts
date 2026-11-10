@@ -1,3 +1,4 @@
+import pLimit from "p-limit";
 import { z } from "zod";
 import { createTRPCRouter, protectedProcedure } from "../trpc";
 import { authoriseAccountAccess } from "./mail";
@@ -17,7 +18,7 @@ export const searchRouter = createTRPCRouter({
       const account = await ctx.db.account.findFirst({
         where: {
           id: input.accountId,
-          userId: ctx.auth.userId,
+          userId: ctx.auth.id,
         },
         select: {
           id: true,
@@ -43,7 +44,7 @@ export const searchRouter = createTRPCRouter({
       const account = await ctx.db.account.findFirst({
         where: {
           id: input.accountId,
-          userId: ctx.auth.userId,
+          userId: ctx.auth.id,
         },
         select: {
           id: true,
@@ -74,8 +75,9 @@ export const searchRouter = createTRPCRouter({
 
       // Insert emails into Orama index
       console.log(`Indexing ${emails.length} emails for account ${account.id}`);
+      const limit = pLimit(8);
       await Promise.all(
-        emails.map(async (email, index) => {
+        emails.map((email, index) => limit(async () => {
           const bodyEmbedding = await getEmbeddings(email.bodySnippet || "");
           await oramaManager.insert({
             title: email.subject || "",
@@ -90,8 +92,9 @@ export const searchRouter = createTRPCRouter({
           if ((index + 1) % 100 === 0) {
             console.log(`Indexed ${index + 1}/${emails.length} emails`);
           }
-        }),
+        })),
       );
+      await oramaManager.saveIndex();
       console.log(`Finished indexing ${emails.length} emails`);
 
       return { success: true, indexedCount: emails.length };
