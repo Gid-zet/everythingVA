@@ -1,4 +1,5 @@
 'use client'
+import { useSingleAccount } from "@/app/mail/use-single-account";
 import { Button } from "@/components/ui/button"
 import {
     Dialog,
@@ -17,7 +18,7 @@ import { Input } from "@/components/ui/input"
 import { toast } from "sonner"
 
 const WebhookDebugger = () => {
-    const [accountId, setAccountId] = useLocalStorage('accountId', '')
+    const { accountId } = useSingleAccount()
     const { data, isLoading, refetch } = api.webhooks.getWebhooks.useQuery({
         accountId
     })

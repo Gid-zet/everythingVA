@@ -24,6 +24,7 @@ import { AccountsPanel } from "./accounts-panel";
 import ComposeButton from "./compose-button";
 import SidebarFooter from "./sidebar-footer";
 import { BulkUnsubscribe } from "./bulk-unsubscribe";
+import { useSingleAccount, SingleAccountPicker } from "../use-single-account";
 
 interface MailProps {
   defaultLayout: number[] | undefined;
@@ -39,6 +40,8 @@ export function Mail({
   const [done, setDone] = useLocalStorage("normalhuman-done", false);
   const [tab, setTab] = useLocalStorage("normalhuman-tab", "inbox");
   const [accountId] = useLocalStorage("accountId", "");
+  // Organizer & co. need one mailbox; in "All inboxes" mode this is the picked one.
+  const { accountId: singleAccountId, isLoading: accountsLoading } = useSingleAccount();
   const [isCollapsed, setIsCollapsed] = React.useState(defaultCollapsed);
   
   // Normalize tab value for comparison (handle "email setup" or "setup")
@@ -176,7 +179,12 @@ export function Mail({
         <ResizablePanel defaultSize={defaultLayout[1]} minSize={30}>
           {tab === "organizer" ? (
             <div className="h-full overflow-auto">
-              <EmailOrganizer accountId={accountId} />
+              <SingleAccountPicker label="Organizing" className="border-b px-4 py-2" />
+              {singleAccountId ? (
+                <EmailOrganizer key={singleAccountId} accountId={singleAccountId} />
+              ) : accountsLoading ? null : (
+                <p className="p-6 text-sm text-muted-foreground">Connect an email account to use the organizer.</p>
+              )}
             </div>
           ) : tab === "unsubscribe" ? (
             <BulkUnsubscribe />

@@ -1,4 +1,5 @@
 "use client";
+import { useSingleAccount, SingleAccountPicker } from "@/app/mail/use-single-account";
 
 import React from "react";
 import { formatDistanceToNowStrict } from "date-fns";
@@ -34,7 +35,7 @@ const PAGE = 30;
  * one-click unsubscribe via List-Unsubscribe and "archive all from sender".
  */
 export function BulkUnsubscribe() {
-  const [accountId] = useLocalStorage("accountId", "");
+  const { accountId } = useSingleAccount();
   const utils = api.useUtils();
   const [filter, setFilter] = React.useState<Filter>("all");
   const [query, setQuery] = React.useState("");
@@ -172,6 +173,7 @@ export function BulkUnsubscribe() {
       <div className="flex h-[52px] shrink-0 items-center gap-2 border-b px-4">
         <h1 className="text-[15px] font-semibold tracking-tight">Unsubscribe</h1>
         <span className="text-xs text-muted-foreground">Senders ranked by volume</span>
+        <SingleAccountPicker label="" className="ml-auto max-w-[260px]" />
       </div>
 
       <div className="flex shrink-0 flex-wrap items-center gap-2 border-b px-4 py-2.5">

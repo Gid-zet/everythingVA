@@ -1,4 +1,5 @@
 "use client";
+import { useSingleAccount } from "@/app/mail/use-single-account";
 import { Button } from "@/components/ui/button";
 import { api } from "@/trpc/react";
 import { useLocalStorage } from "usehooks-ts";
@@ -6,7 +7,7 @@ import { toast } from "sonner";
 import { RefreshCw, Upload } from "lucide-react";
 
 export default function PushCategoriesButton() {
-  const [accountId] = useLocalStorage("accountId", "");
+  const { accountId } = useSingleAccount();
 
   const pushCategoriesMutation = api.mail.pushCategoriesToEmailProvider.useMutation({
     onSuccess: (data) => {

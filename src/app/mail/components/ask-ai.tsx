@@ -1,4 +1,5 @@
 'use client'
+import { useSingleAccount, SingleAccountPicker } from "@/app/mail/use-single-account";
 import { useChat } from 'ai/react'
 import { motion } from 'framer-motion';
 import { Button } from '@/components/ui/button'
@@ -18,7 +19,7 @@ const transitionDebug = {
     duration: 0.2,
 };
 const AskAI = ({ isCollapsed }: { isCollapsed: boolean }) => {
-    const [accountId] = useLocalStorage('accountId', '')
+    const { accountId } = useSingleAccount()
     const { input, handleInputChange, handleSubmit, messages, isLoading, error } = useChat({
         api: "/api/chat",
         body: {
@@ -146,6 +147,7 @@ const AskAI = ({ isCollapsed }: { isCollapsed: boolean }) => {
                             )}
                         </div>
                     )}
+                    <SingleAccountPicker label="Asking" className="mb-2" />
                     <form onSubmit={handleFormSubmit} className="relative flex w-full">
                         <input
                             type="text"
