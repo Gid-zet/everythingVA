@@ -131,6 +131,14 @@ class Account {
         console.log("error", error);
       }
 
+      // Auto-organize newly received mail (no-op unless enabled for this account).
+      if (allEmails.length) {
+        const { runOnNewMail } = await import("@/server/organizer/run");
+        await runOnNewMail(account.id, allEmails.map((e) => e.id)).catch((error) =>
+          console.error("Auto-organize after sync failed:", (error as Error).message),
+        );
+      }
+
       await db.account.update({
         where: { id: account.id },
         data: {
