@@ -13,6 +13,7 @@ import { syncEmailOrganizationToProvider } from "@/lib/provider-email-actions";
 import { getValidToken } from "@/lib/token-refresh";
 import { TRPCError } from "@trpc/server";
 import { getProviders } from "@/server/providers";
+import { dueForSync, scheduleCatchUp } from "@/server/services/mail-sync";
 import {
   setMessagesArchived,
   setMessagesRead,
@@ -350,6 +351,15 @@ export const mailRouter = createTRPCRouter({
         nextCursor = threads.at(-1)?.id ?? null;
       }
       return { threads, nextCursor };
+    }),
+
+  /** Called while the app is open: background-sync accounts that haven't synced recently. */
+  syncStale: protectedProcedure
+    .input(z.object({ accountId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const { ids } = await accountScope(input.accountId, ctx.auth.id);
+      const due = await dueForSync(ctx.auth.id, ids);
+      return { started: await scheduleCatchUp(due) };
     }),
 
   getThreadCounts: protectedProcedure

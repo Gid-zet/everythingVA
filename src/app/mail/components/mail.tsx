@@ -25,6 +25,7 @@ import ComposeButton from "./compose-button";
 import SidebarFooter from "./sidebar-footer";
 import { BulkUnsubscribe } from "./bulk-unsubscribe";
 import { useSingleAccount, SingleAccountPicker } from "../use-single-account";
+import { useBackgroundSync } from "../use-background-sync";
 
 interface MailProps {
   defaultLayout: number[] | undefined;
@@ -42,6 +43,7 @@ export function Mail({
   const [accountId] = useLocalStorage("accountId", "");
   // Organizer & co. need one mailbox; in "All inboxes" mode this is the picked one.
   const { accountId: singleAccountId, isLoading: accountsLoading } = useSingleAccount();
+  useBackgroundSync();
   const [isCollapsed, setIsCollapsed] = React.useState(defaultCollapsed);
   
   // Normalize tab value for comparison (handle "email setup" or "setup")

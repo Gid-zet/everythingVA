@@ -116,16 +116,27 @@ export function EmailOrganizer({ accountId }: { accountId: string }) {
     let done = 0;
     let applied = 0;
     let errors = 0;
+    let newest: Date | null = null;
     try {
       for (let i = 0; i < 40; i++) {
         const r = await batch.mutateAsync({ accountId, sinceDays: 7 });
         done += r.processed;
         applied += r.applied;
         errors += r.errors;
+        newest = r.newestSyncedAt ? new Date(r.newestSyncedAt) : newest;
         setProgress({ done, applied, total: done + r.remaining });
         if (r.remaining === 0 || r.processed === 0) break;
       }
-      toast.success(`Organized ${done} email${done === 1 ? "" : "s"}: ${applied} matched a rule${errors ? `, ${errors} failed` : ""}.`);
+      if (done === 0) {
+        toast.info(
+          newest && Date.now() - newest.getTime() > 7 * 864e5
+            ? `No mail from the last 7 days has synced yet. The newest synced email is from ${newest.toLocaleDateString()}. Try "Sync now" in Accounts, then run this again.`
+            : "Nothing new to organize. Every recent email has already been processed.",
+          { duration: 10_000 },
+        );
+      } else {
+        toast.success(`Organized ${done} email${done === 1 ? "" : "s"}: ${applied} matched a rule${errors ? `, ${errors} failed` : ""}.`);
+      }
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Organizing stopped early");
     } finally {
