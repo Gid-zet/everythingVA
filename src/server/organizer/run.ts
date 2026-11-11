@@ -352,7 +352,11 @@ export async function processBatch(accountId: string, opts: { batch?: number; si
     else if (r.status === "ERROR") results.errors++;
   }
   const remaining = await db.email.count({ where: { ...where, id: { notIn: [...doneIds, ...next.map((n) => n.id)] } } });
-  return { ...results, processed: next.length, remaining };
+  // When nothing is found, tell the user how fresh their synced mail is.
+  const newest = next.length
+    ? null
+    : await db.email.findFirst({ where: { thread: { accountId } }, orderBy: { sentAt: "desc" }, select: { sentAt: true } });
+  return { ...results, processed: next.length, remaining, newestSyncedAt: newest?.sentAt ?? null };
 }
 
 /** Called after a webhook sync: run rules on newly received inbox mail. */

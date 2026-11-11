@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { createTRPCRouter, protectedProcedure } from "@/server/api/trpc";
-import Account from "@/lib/account";
+import { ensureMailWebhook, syncAccountNow } from "@/server/services/mail-sync";
 import { performInitialSync } from "@/lib/sync-actions";
 import { SERVICE_LABELS, toServiceType } from "@/server/providers";
 import { checkAccountHealth, disconnectAccount } from "@/server/services/accounts";
@@ -45,7 +45,7 @@ export const accountsRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const row = await ctx.db.account.findFirst({
         where: { id: input.accountId, userId: ctx.auth.id },
-        select: { id: true, status: true, nextDeltaToken: true },
+        select: { id: true, status: true, nextDeltaToken: true, lastSyncedAt: true },
       });
       if (!row) throw new TRPCError({ code: "NOT_FOUND", message: "Account not found" });
       if (row.status === "needs_reauth") {
@@ -55,7 +55,8 @@ export const accountsRouter = createTRPCRouter({
         if (!row.nextDeltaToken) {
           await performInitialSync(ctx.auth.id, row.id);
         } else {
-          await (await Account.forId(row.id)).syncEmails();
+          await ensureMailWebhook(row.id).catch((e) => console.warn("Webhook repair failed:", (e as Error).message));
+          await syncAccountNow(row.id, { neverSynced: !row.lastSyncedAt });
           await syncCalendarList(row.id, ctx.auth.id).catch(() => undefined);
         }
         return { ok: true };
