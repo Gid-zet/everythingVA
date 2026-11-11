@@ -92,6 +92,11 @@ model Account {
   emailAddresses EmailAddress[]
   calendars      Calendar[]
   drafts         Draft[]
+  organizerRules OrganizerRule[]
+  ruleRuns       RuleRun[]
+
+  // Run organizer rules automatically on newly received mail
+  organizerAutoRun Boolean @default(false)
 
   @@index([userId])
 }
@@ -521,4 +526,76 @@ enum ExceptionType {
   MODIFIED // Modified occurrence (overrides master event data)
   DELETED // Deleted occurrence (excluded from series)
   ADDED // Custom added date (outside RRULE pattern)
+}
+
+
+/// Organizer rule (modelled on Inbox Zero): optional static patterns plus
+/// optional plain-English AI instructions, combined with AND / OR. Matching
+/// rules run their actions against the real mailbox.
+model OrganizerRule {
+  id                  String          @id @default(cuid())
+  accountId           String
+  account             Account         @relation(fields: [accountId], references: [id])
+  name                String
+  enabled             Boolean         @default(true)
+  position            Int             @default(0)
+  instructions        String?
+  from                String?
+  to                  String?
+  subject             String?
+  body                String?
+  conditionalOperator RuleOperator    @default(AND)
+  systemType          RuleSystemType?
+  /// [{ type: "LABEL"|"ARCHIVE"|"MARK_READ"|"STAR"|"MARK_SPAM"|"DRAFT_REPLY", label?, content? }]
+  actions             Json            @default("[]")
+  runs                RuleRun[]
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
+
+  @@unique([accountId, name])
+  @@index([accountId, enabled])
+}
+
+/// One processed message: which rule (if any) matched, why, and what ran.
+model RuleRun {
+  id        String         @id @default(cuid())
+  accountId String
+  account   Account        @relation(fields: [accountId], references: [id])
+  ruleId    String?
+  rule      OrganizerRule? @relation(fields: [ruleId], references: [id], onDelete: SetNull)
+  threadId  String
+  messageId String
+  status    RuleRunStatus
+  reason    String?
+  automated Boolean        @default(false)
+  /// [{ type, label?, status: "done"|"failed"|"skipped", error? , draftId? }]
+  actions   Json           @default("[]")
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+
+  @@unique([accountId, messageId])
+  @@index([accountId, createdAt])
+  @@index([ruleId])
+}
+
+enum RuleOperator {
+  AND
+  OR
+}
+
+enum RuleRunStatus {
+  APPLIED
+  SKIPPED
+  ERROR
+  UNDONE
+}
+
+enum RuleSystemType {
+  TO_REPLY
+  NEWSLETTER
+  MARKETING
+  CALENDAR
+  RECEIPT
+  NOTIFICATION
+  COLD_EMAIL
 }

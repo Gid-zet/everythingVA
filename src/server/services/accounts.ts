@@ -168,6 +168,8 @@ export async function disconnectAccount(userId: string, accountId: string) {
     await tx.calendarEvent.deleteMany({ where: { id: { in: eventIds } } });
     await tx.calendar.deleteMany({ where: { id: { in: calendarIds } } });
     await tx.draft.deleteMany({ where: { accountId } });
+    await tx.ruleRun.deleteMany({ where: { accountId } });
+    await tx.organizerRule.deleteMany({ where: { accountId } });
     await tx.account.delete({ where: { id: accountId } });
   }, { timeout: 60_000 });
 }
