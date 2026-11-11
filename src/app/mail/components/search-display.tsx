@@ -1,4 +1,5 @@
 "use client";
+import { useSingleAccount } from "@/app/mail/use-single-account";
 import DOMPurify from "dompurify";
 import { useAtom } from "jotai";
 import React from "react";
@@ -19,7 +20,7 @@ const SearchDisplay = () => {
   const populateIndex = api.search.populateIndex.useMutation();
 
   const [debouncedSearch] = useDebounceValue(searchValue, 500);
-  const [accountId, setAccountId] = useLocalStorage("accountId", "");
+  const { accountId } = useSingleAccount();
 
   React.useEffect(() => {
     if (!debouncedSearch || !accountId) return;
