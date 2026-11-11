@@ -8,6 +8,7 @@ import { db } from "@/server/db";
 import axios from "axios";
 import { syncEmailsToDatabase } from "./sync-to-db";
 import { getValidToken } from "./token-refresh";
+import { decryptSecret } from "@/server/security/crypto";
 
 const API_BASE_URL = "https://api.aurinko.io/v1";
 
@@ -18,6 +19,15 @@ class Account {
   constructor(token: string, accountId?: string) {
     this.token = token;
     this.accountId = accountId || "";
+  }
+
+  /** Load an account by id with its decrypted token. */
+  static async forId(accountId: string) {
+    const row = await db.account.findUnique({ where: { id: accountId }, select: { id: true, token: true } });
+    if (!row) throw new Error("Account not found");
+    const token = decryptSecret(row.token);
+    if (!token) throw new Error("TOKEN_EXPIRED");
+    return new Account(token, row.id);
   }
 
   private async startSync(daysWithin: number): Promise<SyncResponse> {
@@ -36,10 +46,9 @@ class Account {
   }
 
   async createSubscription() {
-    const webhookUrl =
-      process.env.NODE_ENV === "development"
-        ? "https://simplified-bl-fed-gale.trycloudflare.com"
-        : process.env.NEXT_PUBLIC_URL;
+    // Public base URL Aurinko can reach (use a tunnel such as cloudflared in dev).
+    const webhookUrl = process.env.AURINKO_WEBHOOK_BASE_URL ?? process.env.NEXT_PUBLIC_URL;
+    if (!webhookUrl) throw new Error("Set NEXT_PUBLIC_URL or AURINKO_WEBHOOK_BASE_URL for webhooks");
     const res = await axios.post(
       "https://api.aurinko.io/v1/subscriptions",
       {
@@ -58,11 +67,9 @@ class Account {
 
   async syncEmails() {
     const account = await db.account.findUnique({
-      where: {
-        token: this.token,
-      },
+      where: { id: this.accountId },
     });
-    if (!account) throw new Error("Invalid token");
+    if (!account) throw new Error("Account not found");
 
     // Update accountId if not set
     if (!this.accountId) {
@@ -124,13 +131,14 @@ class Account {
         console.log("error", error);
       }
 
-      // console.log('syncEmails', response)
       await db.account.update({
-        where: {
-          id: account.id,
-        },
+        where: { id: account.id },
         data: {
           nextDeltaToken: storedDeltaToken,
+          lastSyncedAt: new Date(),
+          ...(account.status === "error" || account.status === "syncing"
+            ? { status: "active", statusMessage: null }
+            : {}),
         },
       });
     } catch (error: any) {
@@ -182,11 +190,10 @@ class Account {
       if (error instanceof Error && error.message === "TOKEN_EXPIRED") {
         // Mark account as needing re-authentication
         await db.account.update({
-          where: {
-            id: account.id,
-          },
+          where: { id: account.id },
           data: {
-            token: "", // Clear the expired token
+            status: "needs_reauth",
+            statusMessage: "Access was revoked or expired. Reconnect to resume sync.",
           },
         });
         throw new Error("TOKEN_EXPIRED");
@@ -242,7 +249,7 @@ class Account {
   async performInitialSync() {
     try {
       // Start the sync process
-      const daysWithin = 3;
+      const daysWithin = Number(process.env.INITIAL_SYNC_DAYS ?? 14);
       let syncResponse = await this.startSync(daysWithin); // Sync emails from the last 7 days
 
       // Wait until the sync is ready

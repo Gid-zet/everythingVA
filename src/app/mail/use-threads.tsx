@@ -2,9 +2,14 @@ import { api, type RouterOutputs } from "@/trpc/react";
 import { getQueryKey } from "@trpc/react-query";
 import React from "react";
 import { useLocalStorage } from "usehooks-ts";
+import { useAtomValue } from "jotai";
+import { threadQueryAtom } from "@/lib/atoms";
+
+/** Value of the account switcher meaning "every connected account". */
+export const ALL_ACCOUNTS = "all";
 
 /** Which triage actions apply to the list currently shown. */
-export type ListMode = "active" | "done" | "snoozed" | "trash";
+export type ListMode = "active" | "done" | "snoozed" | "trash" | "spam";
 
 export type ThreadListItem =
   RouterOutputs["mail"]["getThreads"]["threads"][number];
@@ -21,13 +26,14 @@ const useThreads = () => {
   const [accountId] = useLocalStorage("accountId", "");
   const [tab] = useLocalStorage("normalhuman-tab", "inbox");
   const [done] = useLocalStorage("normalhuman-done", false);
+  const query_ = useAtomValue(threadQueryAtom);
   const [mounted, setMounted] = React.useState(false);
 
   React.useEffect(() => {
     setMounted(true);
   }, []);
 
-  const input = { accountId, tab, done, limit: PAGE_SIZE };
+  const input = { accountId, tab, done, limit: PAGE_SIZE, ...(query_ ? { query: query_ } : {}) };
   const queryKey = getQueryKey(api.mail.getThreads, input, "infinite");
 
   const query = api.mail.getThreads.useInfiniteQuery(input, {
@@ -41,7 +47,15 @@ const useThreads = () => {
   });
 
   const mode: ListMode =
-    tab === "trash" ? "trash" : tab === "snoozed" ? "snoozed" : done ? "done" : "active";
+    tab === "trash"
+      ? "trash"
+      : tab === "spam"
+        ? "spam"
+        : tab === "snoozed"
+          ? "snoozed"
+          : done && (tab === "inbox" || tab === "sent" || tab === "drafts")
+            ? "done"
+            : "active";
 
   const threads = React.useMemo(
     () => query.data?.pages.flatMap((p) => p.threads) ?? [],
@@ -56,6 +70,7 @@ const useThreads = () => {
     hasNextPage: !!query.hasNextPage,
     isFetchingNextPage: query.isFetchingNextPage,
     account: accounts?.find((account) => account.id === accountId),
+    isUnified: accountId === ALL_ACCOUNTS,
     refetch: query.refetch,
     accounts,
     queryKey,

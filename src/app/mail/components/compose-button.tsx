@@ -1,145 +1,53 @@
 "use client";
-import { Button } from "@/components/ui/button";
-import {
-  Drawer,
-  DrawerClose,
-  DrawerContent,
-  DrawerDescription,
-  DrawerFooter,
-  DrawerHeader,
-  DrawerTitle,
-  DrawerTrigger,
-} from "@/components/ui/drawer";
-import { Pencil } from "lucide-react";
-
 import React from "react";
-import EmailEditor from "./email-editor";
-import { api } from "@/trpc/react";
+import { Pencil } from "lucide-react";
+import { useAtom } from "jotai";
+import { atom } from "jotai";
 import { useLocalStorage } from "usehooks-ts";
-import { toast } from "sonner";
-import { EmailAttachment } from "./email-editor/file-attachment";
-import { processAttachments, checkAttachmentLimits } from "@/lib/file-utils";
-import ErrorBoundary from "@/components/error-boundary";
+
+import { Button } from "@/components/ui/button";
+import { Drawer, DrawerContent, DrawerDescription, DrawerHeader, DrawerTitle, DrawerTrigger } from "@/components/ui/drawer";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { api, type RouterOutputs } from "@/trpc/react";
+import { Composer } from "./composer";
+
+type Draft = RouterOutputs["mail"]["listDrafts"][number];
+
+/** Open the compose drawer from anywhere (e.g. resuming a draft). */
+export const composeAtom = atom<{ open: boolean; draft?: Draft | null }>({ open: false });
 
 const ComposeButton = ({ isCollapsed = false }: { isCollapsed?: boolean }) => {
-  const [open, setOpen] = React.useState(false);
-  const [accountId] = useLocalStorage("accountId", "");
-  const [toValues, setToValues] = React.useState<
-    { label: string; value: string }[]
-  >([]);
-  const [ccValues, setCcValues] = React.useState<
-    { label: string; value: string }[]
-  >([]);
-  const [subject, setSubject] = React.useState<string>("");
-  const [isProcessingAttachments, setIsProcessingAttachments] =
-    React.useState(false);
-  const { data: account } = api.mail.getMyAccount.useQuery({ accountId });
+  const [state, setState] = useAtom(composeAtom);
+  const [selectedAccount] = useLocalStorage("accountId", "");
+  const { data: accounts } = api.mail.getAccounts.useQuery();
+  const usable = accounts ?? [];
+  const [fromId, setFromId] = React.useState<string>("");
 
+  // Default "From": the draft's account, the selected account, or the first one.
   React.useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (
-        event.key === "c" &&
-        (event.ctrlKey || event.metaKey) &&
-        !["INPUT", "TEXTAREA", "SELECT"].includes(
-          document.activeElement?.tagName || "",
-        )
-      ) {
-        event.preventDefault();
-        setOpen(true);
+    if (!state.open) return;
+    setFromId(
+      state.draft?.accountId ??
+        (selectedAccount && selectedAccount !== "all" ? selectedAccount : usable[0]?.id ?? ""),
+    );
+  }, [state.open, state.draft?.accountId, selectedAccount, usable]);
+
+  // Ctrl/Cmd + Shift + C opens compose (plain Ctrl+C must stay "copy").
+  React.useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const typing = ["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement?.tagName ?? "") ||
+        (document.activeElement as HTMLElement | null)?.isContentEditable;
+      if (!typing && e.key.toLowerCase() === "c" && (e.ctrlKey || e.metaKey) && e.shiftKey) {
+        e.preventDefault();
+        setState({ open: true });
       }
     };
-
-    window.addEventListener("keydown", handleKeyDown);
-
-    return () => {
-      window.removeEventListener("keydown", handleKeyDown);
-    };
-  }, []);
-
-  const sendEmail = api.mail.sendEmail.useMutation();
-
-  const handleSend = async (value: string, attachments?: EmailAttachment[]) => {
-    // console.log(account);
-    // console.log({ value, attachments });
-    if (!account) return;
-
-    try {
-      setIsProcessingAttachments(true);
-
-      // Check attachment limits before processing
-      if (attachments && attachments.length > 0) {
-        const limitCheck = checkAttachmentLimits(attachments);
-        if (!limitCheck.isValid) {
-          toast.error(limitCheck.error);
-          return;
-        }
-      }
-
-      // Convert File objects to base64 content using optimized processing
-      const processedAttachments = attachments
-        ? await processAttachments(attachments, (progress) => {
-            if (progress === 100) {
-              toast.success("Attachments processed successfully");
-            }
-          })
-        : [];
-
-      sendEmail.mutate(
-        {
-          accountId,
-          threadId: undefined,
-          body: value,
-          subject,
-          from: {
-            name: account?.name ?? "Me",
-            address: account?.emailAddress ?? "me@example.com",
-          },
-          to: toValues.map((to) => ({ name: to.value, address: to.value })),
-          cc: ccValues.map((cc) => ({ name: cc.value, address: cc.value })),
-          replyTo: {
-            name: account?.name ?? "Me",
-            address: account?.emailAddress ?? "me@example.com",
-          },
-          inReplyTo: undefined,
-          attachments: processedAttachments,
-        },
-        {
-          onSuccess: () => {
-            toast.success("Email sent");
-            setOpen(false);
-          },
-          onError: (error: any) => {
-            console.error("Error sending email:", error);
-            let errorMessage = error.message || "Failed to send email";
-            
-            // Check for specific error types
-            if (error.status === 400) {
-              const apiMessage = error.responseData?.message || error.responseData?.error;
-              if (apiMessage) {
-                errorMessage = `Failed to send email: ${apiMessage}`;
-              } else {
-                errorMessage = "Failed to send email: Invalid request. Please check that attachments are valid and within size limits (max 25MB per file, 50MB total).";
-              }
-            } else if (error.status === 413) {
-              errorMessage = "Failed to send email: File attachments are too large. Please reduce file sizes or remove some attachments.";
-            } else if (error.status === 401 || error.status === 403) {
-              errorMessage = "Failed to send email: Authentication failed. Please re-authorize your email account.";
-            }
-            
-            toast.error(errorMessage);
-          },
-        },
-      );
-    } catch (error) {
-      console.error("Error processing attachments:", error);
-      toast.error("Failed to process attachments");
-    } finally {
-      setIsProcessingAttachments(false);
-    }
-  };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [setState]);
 
   return (
-    <Drawer open={open} onOpenChange={setOpen}>
+    <Drawer open={state.open} onOpenChange={(open) => setState(open ? { open, draft: state.draft } : { open: false })}>
       <DrawerTrigger asChild>
         {isCollapsed ? (
           <Button size="icon" className="size-9 rounded-lg" aria-label="Compose">
@@ -152,28 +60,41 @@ const ComposeButton = ({ isCollapsed = false }: { isCollapsed?: boolean }) => {
           </Button>
         )}
       </DrawerTrigger>
-      <DrawerContent className="">
-        <DrawerHeader>
-          <DrawerTitle>Compose Email</DrawerTitle>
-          <ErrorBoundary>
-            <EmailEditor
-              toValues={toValues}
-              ccValues={ccValues}
-              onToChange={(values) => {
-                setToValues(values);
-              }}
-              onCcChange={(values) => {
-                setCcValues(values);
-              }}
-              subject={subject}
-              setSubject={setSubject}
-              to={toValues.map((to) => to.value)}
-              handleSend={handleSend}
-              isSending={sendEmail.isPending || isProcessingAttachments}
-              defaultToolbarExpand
-            />
-          </ErrorBoundary>
+      <DrawerContent className="mx-auto max-w-3xl">
+        <DrawerHeader className="flex flex-row items-center gap-3 text-left">
+          <div className="min-w-0 flex-1">
+            <DrawerTitle>{state.draft ? "Draft" : "New message"}</DrawerTitle>
+            <DrawerDescription className="sr-only">Write and send an email</DrawerDescription>
+          </div>
+          {usable.length > 1 && (
+            <Select value={fromId} onValueChange={setFromId} disabled={!!state.draft}>
+              <SelectTrigger className="h-8 w-auto min-w-[220px] text-[13px]" aria-label="Send from">
+                <span className="mr-1 text-muted-foreground">From</span>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {usable.map((a) => (
+                  <SelectItem key={a.id} value={a.id}>
+                    {a.emailAddress}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
         </DrawerHeader>
+        {fromId ? (
+          <div className="pb-4">
+            <Composer
+              key={`${fromId}-${state.draft?.id ?? "new"}`}
+              accountId={fromId}
+              draft={state.draft}
+              initialMode="new"
+              onSent={() => setState({ open: false })}
+            />
+          </div>
+        ) : (
+          <p className="px-4 pb-6 text-sm text-muted-foreground">Connect an email account to send mail.</p>
+        )}
       </DrawerContent>
     </Drawer>
   );

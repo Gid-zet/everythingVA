@@ -61,14 +61,21 @@ export const POST = async (req: NextRequest) => {
   if (!account) {
     return new Response("Account not found", { status: 404 });
   }
-  const acc = new Account(account.token);
-  waitUntil(
-    acc.syncEmails().then(() => {
-      console.log("Synced emails");
-    }),
-  );
+  // Calendar notifications: mark the calendar changed so open clients refetch.
+  const calendarMatch = payload.resource?.match(/^\/calendars\/([^/]+)\/events/);
+  if (calendarMatch) {
+    await db.calendar.updateMany({
+      where: { accountId: account.id, aurinkoCalendarId: decodeURIComponent(calendarMatch[1]!) },
+      data: { lastSyncAt: new Date() },
+    });
+    return new Response(null, { status: 200 });
+  }
 
-  // Process the notification payload as needed
+  waitUntil(
+    Account.forId(account.id)
+      .then((acc) => acc.syncEmails())
+      .catch((error) => console.error(`Webhook sync failed for ${account.id}:`, (error as Error).message)),
+  );
 
   return new Response(null, { status: 200 });
 };

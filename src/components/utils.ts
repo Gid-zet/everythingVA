@@ -27,6 +27,8 @@ export function getEventColorValue(color?: EventColor | string): string | undefi
       return "rgba(254, 215, 170, 0.5)" // orange-200/50
     default:
       // If it's already a valid CSS color (hex, rgb, etc.), return it as-is
+      // Provider calendar colours (#rrggbb) render as a soft tint.
+      if (/^#[0-9A-Fa-f]{6}$/.test(eventColor)) return `${eventColor}2e`
       if (eventColor && /^(#[0-9A-Fa-f]{3,6}|rgb|rgba|hsl|hsla)/.test(eventColor)) {
         return eventColor
       }

@@ -18,6 +18,7 @@ import {
   Undo2,
 } from "lucide-react";
 
+import { Star } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useThread } from "@/app/mail/use-thread";
 import useVim from "./kbar/use-vim";
@@ -52,6 +53,7 @@ export function ThreadList() {
     done,
     tab,
     mode,
+    isUnified,
   } = useThreads();
   const [threadId, setThreadId] = useThread();
   const { selectedThreadIds, visualMode } = useVim();
@@ -199,6 +201,17 @@ export function ThreadList() {
                           {count > 1 && (
                             <span className="shrink-0 rounded-md bg-muted px-1 text-[10px] font-medium tabular-nums text-muted-foreground">
                               {count}
+                            </span>
+                          )}
+                          {item.starred && (
+                            <Star className="size-3 shrink-0 fill-amber-400 text-amber-500" aria-label="Starred" />
+                          )}
+                          {isUnified && (
+                            <span
+                              className="hidden max-w-[120px] shrink-0 truncate rounded bg-muted px-1 text-[10px] text-muted-foreground lg:inline"
+                              title={item.account.emailAddress}
+                            >
+                              {item.account.emailAddress.split("@")[0]}
                             </span>
                           )}
                           <span

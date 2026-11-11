@@ -5,13 +5,21 @@ import { Loader2, Search, X } from "lucide-react";
 import React from "react";
 import useThreads from "../use-threads";
 import { useAtom } from "jotai";
-import { isSearchingAtom, searchValueAtom } from "@/lib/atoms";
+import { isSearchingAtom, searchValueAtom, threadQueryAtom } from "@/lib/atoms";
+import { useSetAtom } from "jotai";
 
 const SearchBar = () => {
   const { isFetching } = useThreads();
   const [searchValue, setSearchValue] = useAtom(searchValueAtom);
   const [isSearching, setIsSearching] = useAtom(isSearchingAtom);
   const ref = React.useRef<HTMLInputElement>(null);
+  // The list filters by the same text (supports from:, to:, subject:, is:unread,
+  // is:starred, has:attachment); the right pane shows AI semantic matches.
+  const setThreadQuery = useSetAtom(threadQueryAtom);
+  React.useEffect(() => {
+    const t = setTimeout(() => setThreadQuery(searchValue.trim()), 300);
+    return () => clearTimeout(t);
+  }, [searchValue, setThreadQuery]);
   const handleBlur = () => {
     if (!!searchValue) return;
     setIsSearching(false);
@@ -43,7 +51,7 @@ const SearchBar = () => {
         <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
         <Input
           ref={ref}
-          placeholder="Search mail"
+          placeholder="Search · from: is:unread has:attachment"
           className="h-9 rounded-lg border-transparent bg-muted/60 pl-9 pr-16 text-[13px] shadow-none transition-colors placeholder:text-muted-foreground focus-visible:border-brand/40 focus-visible:bg-background focus-visible:ring-4 focus-visible:ring-brand/10 focus-visible:ring-offset-0"
           value={searchValue}
           onChange={(e) => setSearchValue(e.target.value)}

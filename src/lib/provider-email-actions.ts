@@ -1,8 +1,5 @@
-import axios from "axios";
 import type { EmailStatus } from "@prisma/client";
-import { getValidToken } from "./token-refresh";
-
-const API_BASE_URL = "https://api.aurinko.io/v1";
+import { getProviders } from "@/server/providers";
 
 interface SyncEmailOrganizationOptions {
   accountId: string;
@@ -12,8 +9,9 @@ interface SyncEmailOrganizationOptions {
 }
 
 /**
- * Ensure email organization changes (status, labels) are reflected in the provider mailbox.
- * Currently leverages Aurinko's email PATCH endpoint to add/remove system labels and keywords.
+ * Mirror organizer changes (status, labels) to the mailbox through the
+ * provider layer. (Replaces a call to `PATCH /email/messages/{id}`, which the
+ * Aurinko API does not have, so these changes never reached the provider.)
  */
 export async function syncEmailOrganizationToProvider({
   accountId,
@@ -21,93 +19,15 @@ export async function syncEmailOrganizationToProvider({
   status,
   customLabels,
 }: SyncEmailOrganizationOptions): Promise<void> {
-  const token = await getValidToken(accountId);
+  const { mail } = await getProviders(accountId, null);
+  const ids = [emailProviderId];
+  const results = [];
 
-  if (!token) {
-    throw new Error("No valid provider token available");
-  }
+  if (status === "read" || status === "unread") results.push(await mail.setRead(ids, status === "read"));
+  if (status === "archived") results.push(await mail.setArchived(ids, true));
+  if (status === "flagged") results.push(await mail.setStarred(ids, true));
+  if (customLabels) results.push(await mail.setLabels(ids, customLabels));
 
-  const payload: Record<string, unknown> = {};
-  const labelsToAdd = new Set<string>();
-  const labelsToRemove = new Set<string>();
-
-  if (status) {
-    switch (status) {
-      case "read":
-        labelsToRemove.add("unread");
-        break;
-      case "unread":
-        labelsToAdd.add("unread");
-        break;
-      case "archived":
-        labelsToRemove.add("inbox");
-        break;
-      case "flagged":
-        labelsToAdd.add("flagged");
-        break;
-      case "snoozed":
-        labelsToAdd.add("snoozed");
-        break;
-    }
-
-    if (status !== "flagged") {
-      labelsToRemove.add("flagged");
-    }
-
-    if (status !== "snoozed") {
-      labelsToRemove.add("snoozed");
-    }
-
-    if (status !== "unread") {
-      labelsToRemove.add("unread");
-    }
-  }
-
-  if (customLabels) {
-    payload.keywords = customLabels;
-  }
-
-  const sysLabelsPayload: Record<string, string[]> = {};
-  if (labelsToAdd.size > 0) {
-    sysLabelsPayload.add = Array.from(labelsToAdd);
-  }
-  if (labelsToRemove.size > 0) {
-    sysLabelsPayload.remove = Array.from(labelsToRemove);
-  }
-
-  if (Object.keys(sysLabelsPayload).length > 0) {
-    payload.sysLabels = sysLabelsPayload;
-  }
-
-  if (Object.keys(payload).length === 0) {
-    return;
-  }
-
-  try {
-    await axios.patch(
-      `${API_BASE_URL}/email/messages/${emailProviderId}`,
-      payload,
-      {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      },
-    );
-  } catch (error: any) {
-    // Provide more descriptive error messages
-    if (axios.isAxiosError(error)) {
-      if (error.response?.status === 404) {
-        throw new Error(`Email not found in provider (ID: ${emailProviderId})`);
-      } else if (error.response?.status === 401 || error.response?.status === 403) {
-        throw new Error("No valid provider token available");
-      } else {
-        const errorMessage = error.response?.data?.message || 
-                           error.response?.data?.error || 
-                           `Request failed with status code ${error.response?.status}`;
-        throw new Error(errorMessage);
-      }
-    }
-    throw error;
-  }
+  const failed = results.find((r) => r.failed > 0);
+  if (failed) throw new Error(failed.firstError ?? "The mail provider rejected the change");
 }
-

@@ -20,6 +20,14 @@ export const env = createEnv({
     AURINKO_CLIENT_ID: z.string().min(1),
     AURINKO_CLIENT_SECRET: z.string().min(1),
     AURINKO_SIGNING_SECRET: z.string().min(1),
+    // 32 bytes (base64 or hex) used to encrypt provider tokens at rest.
+    TOKEN_ENCRYPTION_KEY: z.string().min(32).optional(),
+    // HMAC key for the OAuth `state` parameter (falls back to TOKEN_ENCRYPTION_KEY).
+    OAUTH_STATE_SECRET: z.string().min(16).optional(),
+    // Public URL Aurinko can reach for webhooks (e.g. a tunnel in development).
+    AURINKO_WEBHOOK_BASE_URL: z.string().url().optional(),
+    INITIAL_SYNC_DAYS: z.coerce.number().int().min(1).max(365).optional(),
+    OPENAI_API_KEY: z.string().min(1).optional(),
   },
 
   /**
@@ -50,6 +58,11 @@ export const env = createEnv({
     AURINKO_CLIENT_ID: process.env.AURINKO_CLIENT_ID,
     AURINKO_CLIENT_SECRET: process.env.AURINKO_CLIENT_SECRET,
     AURINKO_SIGNING_SECRET: process.env.AURINKO_SIGNING_SECRET,
+    TOKEN_ENCRYPTION_KEY: process.env.TOKEN_ENCRYPTION_KEY,
+    OAUTH_STATE_SECRET: process.env.OAUTH_STATE_SECRET,
+    AURINKO_WEBHOOK_BASE_URL: process.env.AURINKO_WEBHOOK_BASE_URL,
+    INITIAL_SYNC_DAYS: process.env.INITIAL_SYNC_DAYS,
+    OPENAI_API_KEY: process.env.OPENAI_API_KEY,
     NEXT_PUBLIC_KINDE_CLIENT_ID: process.env.NEXT_PUBLIC_KINDE_CLIENT_ID,
     NEXT_PUBLIC_KINDE_ISSUER_URL: process.env.NEXT_PUBLIC_KINDE_ISSUER_URL,
     NEXT_PUBLIC_KINDE_SITE_URL: process.env.NEXT_PUBLIC_KINDE_SITE_URL,

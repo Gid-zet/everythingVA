@@ -20,8 +20,7 @@ import { isSearchingAtom } from "@/lib/atoms";
 import { useAtom } from "jotai";
 import AskAI from "./ask-ai";
 import { EmailOrganizer } from "./email-organizer";
-import AuthoriseButton from "@/components/authorise-button";
-import PushCategoriesButton from "@/components/push-categories-button";
+import { AccountsPanel } from "./accounts-panel";
 import ComposeButton from "./compose-button";
 import SidebarFooter from "./sidebar-footer";
 import { BulkUnsubscribe } from "./bulk-unsubscribe";
@@ -38,12 +37,17 @@ export function Mail({
   navCollapsedSize,
 }: MailProps) {
   const [done, setDone] = useLocalStorage("normalhuman-done", false);
-  const [tab] = useLocalStorage("normalhuman-tab", "inbox");
+  const [tab, setTab] = useLocalStorage("normalhuman-tab", "inbox");
   const [accountId] = useLocalStorage("accountId", "");
   const [isCollapsed, setIsCollapsed] = React.useState(defaultCollapsed);
   
   // Normalize tab value for comparison (handle "email setup" or "setup")
-  const isSetupTab = tab === "setup" || tab === "email setup";
+  const isSetupTab = tab === "accounts" || tab === "setup" || tab === "email setup";
+
+  // OAuth callbacks land on /mail?tab=accounts&connected=… → open the Accounts panel.
+  React.useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("tab") === "accounts") setTab("accounts");
+  }, [setTab]);
   const tabTitle =
     tab === "drafts"
       ? "Drafts"
@@ -53,9 +57,15 @@ export function Mail({
           ? "Snoozed"
           : tab === "trash"
             ? "Trash"
-            : "Inbox";
+            : tab === "starred"
+              ? "Starred"
+              : tab === "spam"
+                ? "Spam"
+                : accountId === "all"
+                  ? "All inboxes"
+                  : "Inbox";
   // Snoozed and Trash are single lists; the others split active / archived.
-  const hasArchiveSplit = tab !== "snoozed" && tab !== "trash";
+  const hasArchiveSplit = tab === "inbox" || tab === "sent" || tab === "drafts";
 
   // Clean up corrupted cookies on mount
   React.useEffect(() => {
@@ -171,24 +181,18 @@ export function Mail({
           ) : tab === "unsubscribe" ? (
             <BulkUnsubscribe />
           ) : isSetupTab ? (
-            <div className="flex h-full flex-col items-center justify-center p-8">
-              <div className="w-full max-w-md space-y-4">
-                <div className="mb-6 text-center">
-                  <h2 className="text-2xl font-semibold tracking-tight">Email Setup</h2>
-                  <p className="mt-2 text-muted-foreground">
-                    Connect your email account to get started
-                  </p>
-                </div>
-                <AuthoriseButton />
-                <div className="mt-6 border-t pt-6">
-                  <div className="mb-4 text-center">
-                    <h3 className="text-lg font-semibold">Email Organization</h3>
-                    <p className="mt-1 text-sm text-muted-foreground">
-                      Push organizer categories as labels to your email provider
-                    </p>
-                  </div>
-                  <PushCategoriesButton />
-                </div>
+            <div className="flex h-full items-center justify-center p-8">
+              <div className="max-w-sm space-y-4 text-[13px] text-muted-foreground">
+                <p className="text-base font-semibold text-foreground">How connecting works</p>
+                <p>
+                  You sign in on Google&apos;s, Microsoft&apos;s or your mail server&apos;s own page. EverythingVA receives an access
+                  grant, never your password, and stores it encrypted on our servers. Your browser never sees it.
+                </p>
+                <p>
+                  New mail and calendar changes arrive through provider notifications, with a background check as a fallback.
+                  Archive, delete, star, read state, labels and RSVPs are written back to your mailbox.
+                </p>
+                <p>Disconnecting revokes access and deletes our copy. Nothing is removed from your mailbox.</p>
               </div>
             </div>
           ) : (
@@ -240,13 +244,8 @@ export function Mail({
         <ResizableHandle />
         <ResizablePanel defaultSize={defaultLayout[2]} minSize={30}>
           {isSetupTab ? (
-            <div className="flex h-full items-center justify-center p-8">
-              <div className="text-center text-muted-foreground">
-                <p className="text-lg">Email Setup</p>
-                <p className="mt-2 text-sm">
-                  Use the authorize and sync buttons to connect your email account
-                </p>
-              </div>
+            <div className="h-full overflow-y-auto">
+              <AccountsPanel />
             </div>
           ) : (
             <ThreadDisplay />
