@@ -28,13 +28,27 @@ type EmailEditorProps = {
   subject: string;
   setSubject: (subject: string) => void;
   to: string[];
-  handleSend: (value: string, attachments?: EmailAttachment[]) => void;
+  /** Resolve true when sent; the editor only clears after a successful send. */
+  handleSend: (value: string, attachments?: EmailAttachment[]) => void | boolean | Promise<void | boolean>;
   isSending: boolean;
 
   onToChange: (values: { label: string; value: string }[]) => void;
   onCcChange: (values: { label: string; value: string }[]) => void;
 
+  bccValues?: { label: string; value: string }[];
+  onBccChange?: (values: { label: string; value: string }[]) => void;
+
   defaultToolbarExpand?: boolean;
+  /** HTML to start with (restored draft, forwarded message, quick reply). */
+  initialContent?: string;
+  /** Called (debounced by the caller) whenever the body changes, for autosave. */
+  onContentChange?: (html: string) => void;
+  /** Rendered above the recipients, e.g. Reply / Reply all / Forward tabs. */
+  headerSlot?: React.ReactNode;
+  /** e.g. "Saved 12:04" */
+  statusText?: string;
+  /** Account used for recipient suggestions (needed in the unified inbox). */
+  accountIdOverride?: string;
 };
 
 // Debounce utility function for function calls
@@ -67,13 +81,21 @@ const EmailEditor = ({
   isSending,
   onToChange,
   onCcChange,
+  bccValues,
+  onBccChange,
   defaultToolbarExpand,
+  initialContent,
+  onContentChange,
+  headerSlot,
+  statusText,
+  accountIdOverride,
 }: EmailEditorProps) => {
   const [ref] = useAutoAnimate();
-  const [accountId] = useLocalStorage("accountId", "");
+  const [storedAccountId] = useLocalStorage("accountId", "");
+  const accountId = accountIdOverride ?? storedAccountId;
   const { data: suggestions } = api.mail.getEmailSuggestions.useQuery(
     { accountId: accountId, query: "" },
-    { enabled: !!accountId },
+    { enabled: !!accountId && accountId !== "all" },
   );
   const [attachments, setAttachments] = React.useState<EmailAttachment[]>([]);
 
@@ -94,7 +116,7 @@ const EmailEditor = ({
   const customText = Text.extend({
     addKeyboardShortcuts() {
       return {
-        "Meta-j": () => {
+        "Mod-j": () => {
           aiGenerate(this.editor.getText());
           return true;
         },
@@ -105,12 +127,22 @@ const EmailEditor = ({
   const editor = useEditor({
     autofocus: false,
     extensions: [StarterKit, customText, GhostExtension],
+    content: initialContent ?? "",
     editorProps: {
       attributes: {
         placeholder: "Write your email here...",
       },
     },
+    onUpdate: ({ editor }) => onContentChange?.(editor.getHTML()),
   });
+
+  // Replace the body when the caller switches mode (reply → forward) or restores a draft.
+  React.useEffect(() => {
+    if (editor && initialContent !== undefined && editor.getHTML() !== initialContent) {
+      editor.commands.setContent(initialContent, false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialContent, editor]);
 
   React.useEffect(() => {
     if (typeof window === "undefined") return;
@@ -141,8 +173,20 @@ const EmailEditor = ({
     editor.commands.insertContent(generation);
   }, [generation, editor]);
 
-  // Debounce the send function to prevent rapid calls
-  const debouncedHandleSend = useDebouncedCallback(handleSend, 300);
+  const sendingRef = React.useRef(false);
+  const send = async () => {
+    if (sendingRef.current) return; // guard against double sends
+    sendingRef.current = true;
+    try {
+      const ok = await handleSend(editor?.getHTML() || "", attachments);
+      if (ok !== false) {
+        editor?.commands.clearContent();
+        setAttachments([]);
+      }
+    } finally {
+      sendingRef.current = false;
+    }
+  };
 
   // Cleanup function to prevent memory leaks
   React.useEffect(() => {
@@ -153,7 +197,8 @@ const EmailEditor = ({
 
   return (
     <div>
-      <div className="flex border-b p-4 py-2">
+      {headerSlot}
+      <div className="flex border-b px-4 py-1.5">
         {editor && <TipTapMenuBar editor={editor} />}
       </div>
 
@@ -174,6 +219,15 @@ const EmailEditor = ({
               label="Cc"
               onChange={onCcChange}
             />
+            {onBccChange && (
+              <TagInput
+                suggestions={suggestions?.map((s) => s.address) || []}
+                value={bccValues ?? []}
+                placeholder="Add tags"
+                label="Bcc"
+                onChange={onBccChange}
+              />
+            )}
             <Input
               id="subject"
               className="w-full"
@@ -184,13 +238,16 @@ const EmailEditor = ({
           </>
         )}
         <div className="flex items-center gap-2">
-          <div
-            className="cursor-pointer"
+          <button
+            type="button"
+            className="min-w-0 flex-1 truncate text-left text-[13px] text-muted-foreground hover:text-foreground"
             onClick={() => setExpanded((e) => !e)}
+            aria-expanded={expanded}
           >
-            <span className="font-medium text-green-600">Draft </span>
-            <span>to {to.join(", ")}</span>
-          </div>
+            <span className="font-medium text-foreground">{expanded ? "Hide details" : "To"} </span>
+            {!expanded && <span>{to.length ? to.join(", ") : "Add recipients"}</span>}
+          </button>
+          {statusText && <span className="shrink-0 text-[11px] text-muted-foreground">{statusText}</span>}
           <AIComposeButton
             isComposing={defaultToolbarExpand}
             onGenerate={setGeneration}
@@ -214,22 +271,10 @@ const EmailEditor = ({
 
       <Separator />
       <div className="flex items-center justify-between px-4 py-3">
-        <span className="text-sm">
-          Tip: Press{" "}
-          <kbd className="rounded-lg border border-gray-200 bg-gray-100 px-2 py-1.5 text-xs font-semibold text-gray-800">
-            Cmd + J
-          </kbd>{" "}
-          for AI autocomplete
+        <span className="text-xs text-muted-foreground">
+          <kbd className="rounded border bg-muted px-1.5 py-0.5 font-sans text-[10px]">Ctrl J</kbd> AI autocomplete
         </span>
-        <Button
-          onClick={async () => {
-            const content = editor?.getHTML() || "";
-            editor?.commands.clearContent();
-            await debouncedHandleSend(content, attachments);
-          }}
-          isLoading={isSending}
-          disabled={isSending}
-        >
+        <Button onClick={() => void send()} isLoading={isSending} disabled={isSending} className="h-8 px-4">
           Send
         </Button>
       </div>

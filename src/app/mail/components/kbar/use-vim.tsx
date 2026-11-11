@@ -171,6 +171,17 @@ const useVim = () => {
         if (mode === "trash") return;
         withTargets(actions.trash);
       },
+      // Star toggle (Gmail's "s"); applies the opposite of the first target's state.
+      s: () =>
+        withTargets((ids) => {
+          const first = data?.find((t) => t.id === ids[0]);
+          return actions.setStarred(ids, !first?.starred);
+        }),
+      "Shift+U": () => withTargets((ids) => actions.setRead(ids, false, { silent: false })),
+      "Shift+!": () => {
+        if (mode === "spam" || mode === "trash") return;
+        withTargets(actions.spam);
+      },
     })(event);
   };
 

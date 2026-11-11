@@ -146,21 +146,26 @@ const FileAttachment: React.FC<FileAttachmentProps> = ({
   };
 
   return (
-    <div className="space-y-2">
+    <div
+      className="space-y-2"
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
       {/* Attachment Button */}
       <div className="flex items-center gap-2">
         <Button
           type="button"
-          variant="outline"
+          variant="ghost"
           size="sm"
           onClick={() => fileInputRef.current?.click()}
-          className="flex items-center gap-2"
+          className="h-7 gap-1.5 px-2 text-[12px] text-muted-foreground hover:text-foreground"
         >
-          <Paperclip className="h-4 w-4" />
-          Attach Files
+          <Paperclip className="h-3.5 w-3.5" />
+          Attach
         </Button>
-        <span className="text-xs text-muted-foreground">
-          {attachments.length}/{maxFiles} files
+        <span className="text-[11px] text-muted-foreground/70">
+          {attachments.length ? `${attachments.length}/${maxFiles} files` : `or drop files here · up to ${formatFileSize(maxFileSize)} each`}
         </span>
       </div>
 
@@ -175,17 +180,9 @@ const FileAttachment: React.FC<FileAttachmentProps> = ({
       />
 
       {/* Drag & Drop Area */}
-      {attachments.length === 0 && (
-        <div
-          className={`rounded-lg border-2 border-dashed p-4 text-center transition-colors ${
-            isDragging
-              ? "border-primary bg-primary/5"
-              : "border-muted-foreground/25 hover:border-muted-foreground/50"
-          }`}
-          onDragOver={handleDragOver}
-          onDragLeave={handleDragLeave}
-          onDrop={handleDrop}
-        >
+      {/* Drop target appears only while dragging files over the composer area */}
+      {isDragging && (
+        <div className="rounded-lg border-2 border-dashed border-primary bg-primary/5 p-4 text-center">
           <Paperclip className="mx-auto mb-2 h-8 w-8 text-muted-foreground" />
           <p className="text-sm text-muted-foreground">
             Drag and drop files here, or click "Attach Files"

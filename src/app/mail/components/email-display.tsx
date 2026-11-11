@@ -6,14 +6,17 @@ import useThreads from '../use-threads';
 import { cn } from '@/lib/utils';
 import { format, formatDistanceToNowStrict } from 'date-fns';
 import { SenderAvatar } from './sender-avatar';
+import { AttachmentList } from './attachment-list';
 
 type Props = {
     email: NonNullable<RouterOutputs['mail']['getThreadById']>['emails'][number]
     defaultOpen?: boolean
+    accountId: string
 }
 
-const EmailDisplay = ({ email, defaultOpen = true }: Props) => {
-    const { account } = useThreads()
+const EmailDisplay = ({ email, defaultOpen = true, accountId }: Props) => {
+    const { accounts } = useThreads()
+    const account = accounts?.find((a) => a.id === accountId)
     const [open, setOpen] = React.useState(defaultOpen)
     const letterRef = React.useRef<HTMLDivElement>(null);
 
@@ -68,6 +71,9 @@ const EmailDisplay = ({ email, defaultOpen = true }: Props) => {
                     <div className="overflow-x-auto rounded-lg bg-white p-4 text-[14px] leading-relaxed text-zinc-900 ring-1 ring-inset ring-black/5">
                         <Letter html={email?.body ?? email.bodySnippet ?? ""} />
                     </div>
+                    {email.attachments.length > 0 && (
+                        <AttachmentList accountId={accountId} messageId={email.id} attachments={email.attachments} />
+                    )}
                 </div>
             )}
         </article>

@@ -4,12 +4,18 @@ import {
   ArchiveRestore,
   ChevronDown,
   ChevronUp,
+  CalendarPlus,
   Inbox,
+  Mail,
   MailOpen,
+  ShieldAlert,
+  ShieldCheck,
+  Star,
   Trash2,
   Undo2,
   X,
 } from "lucide-react";
+import React from "react";
 import { format } from "date-fns";
 import { useAtom } from "jotai";
 
@@ -27,6 +33,9 @@ import { isSearchingAtom } from "@/lib/atoms";
 import SearchDisplay from "./search-display";
 import ReplyBox from "./reply-box";
 import { SnoozeMenu } from "./snooze-menu";
+import { ThreadInsights } from "./thread-insights";
+import { EventEditorDialog } from "@/app/calendar/components/event-editor";
+import { cn } from "@/lib/utils";
 
 function Kbd({ children }: { children: React.ReactNode }) {
   return (
@@ -76,10 +85,20 @@ function ToolbarButton({
 
 export function ThreadDisplay() {
   const [threadId, setThreadId] = useThread();
-  const { threads, mode } = useThreads();
+  const { threads, mode, isUnified } = useThreads();
   const [isSearching] = useAtom(isSearchingAtom);
   const actions = useThreadActions();
   const { data: thread, isLoading } = useCurrentThread(threadId);
+  const [scheduling, setScheduling] = React.useState(false);
+
+  // Opening a thread marks it read (in the app and at the provider), once.
+  const markedRef = React.useRef<string | null>(null);
+  React.useEffect(() => {
+    if (!thread || markedRef.current === thread.id) return;
+    markedRef.current = thread.id;
+    if (thread.emails.some((e) => e.status === "unread")) void actions.setRead([thread.id], true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [thread?.id]);
 
   const idx = threads.findIndex((t) => t.id === threadId);
   const go = (delta: number) => {
@@ -159,6 +178,52 @@ export function ThreadDisplay() {
             onClick={() => threadId && void actions.trash([threadId])}
           />
         )}
+        {mode === "spam" ? (
+          <ToolbarButton
+            icon={<ShieldCheck className="size-4" />}
+            label="Not spam"
+            hint="Move back to inbox"
+            disabled={!thread}
+            onClick={() => threadId && void actions.notSpam([threadId])}
+          />
+        ) : mode !== "trash" ? (
+          <ToolbarButton
+            icon={<ShieldAlert className="size-4" />}
+            hint="Report spam"
+            kbd="!"
+            disabled={!thread}
+            onClick={() => threadId && void actions.spam([threadId])}
+          />
+        ) : null}
+        <span className="mx-1 h-5 w-px bg-border" aria-hidden />
+        <ToolbarButton
+          icon={
+            <Star
+              className={cn("size-4", thread?.starred && "fill-amber-400 text-amber-500")}
+            />
+          }
+          hint={thread?.starred ? "Remove star" : "Star"}
+          kbd="S"
+          disabled={!thread}
+          onClick={() => thread && void actions.setStarred([thread.id], !thread.starred)}
+        />
+        <ToolbarButton
+          icon={<Mail className="size-4" />}
+          hint="Mark as unread"
+          kbd="Shift U"
+          disabled={!thread}
+          onClick={() => {
+            if (!thread) return;
+            markedRef.current = thread.id;
+            void actions.setRead([thread.id], false, { silent: false });
+          }}
+        />
+        <ToolbarButton
+          icon={<CalendarPlus className="size-4" />}
+          hint="Add to calendar"
+          disabled={!thread}
+          onClick={() => setScheduling(true)}
+        />
         {mode === "snoozed" && thread?.snoozedUntil && (
           <span className="ml-1 inline-flex items-center gap-1 rounded-md bg-brand-soft px-1.5 py-0.5 text-[11px] font-medium text-brand">
             <AlarmClock className="size-3" />
@@ -236,6 +301,11 @@ export function ThreadDisplay() {
                 {thread.subject || "(no subject)"}
               </h2>
               <p className="mt-1.5 text-xs text-muted-foreground">
+                {isUnified && (
+                  <span className="mr-2 rounded bg-muted px-1.5 py-0.5 text-[11px] font-medium text-foreground/70">
+                    {thread.account.emailAddress}
+                  </span>
+                )}
                 {thread.emails.length} message
                 {thread.emails.length === 1 ? "" : "s"}
                 {participants.length > 0 && (
@@ -248,11 +318,15 @@ export function ThreadDisplay() {
                 )}
               </p>
             </header>
+            <div className="px-4 pb-3 sm:px-6">
+              <ThreadInsights accountId={thread.accountId} threadId={thread.id} />
+            </div>
             <div className="flex flex-col gap-3 px-4 pb-6 sm:px-6">
               {thread.emails.map((email, i) => (
                 <EmailDisplay
                   key={email.id}
                   email={email}
+                  accountId={thread.accountId}
                   defaultOpen={i >= thread.emails.length - 2}
                 />
               ))}
@@ -280,6 +354,25 @@ export function ThreadDisplay() {
             </p>
           </div>
         </div>
+      )}
+      {thread && (
+        <EventEditorDialog
+          open={scheduling}
+          onOpenChange={setScheduling}
+          preset={{
+            title: thread.subject,
+            accountId: thread.accountId,
+            description: `From email: ${thread.subject}`,
+            attendees: Array.from(
+              new Map(
+                thread.emails
+                  .flatMap((e) => [e.from, ...e.to, ...e.cc])
+                  .filter((a) => a.address.toLowerCase() !== thread.account.emailAddress.toLowerCase())
+                  .map((a) => [a.address.toLowerCase(), { email: a.address, name: a.name ?? null }]),
+              ).values(),
+            ),
+          }}
+        />
       )}
     </div>
   );

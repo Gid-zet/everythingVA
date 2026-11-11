@@ -70,7 +70,16 @@ function EventWrapper({
         getBorderRadiusClasses(isFirstDay, isLastDay),
         className
       )}
-      style={backgroundColor ? { backgroundColor } : undefined}
+      style={
+        backgroundColor
+          ? {
+              backgroundColor,
+              ...(/^#[0-9A-Fa-f]{6}$/.test(color ?? event.color ?? "")
+                ? { boxShadow: `inset 3px 0 0 ${color ?? event.color}` }
+                : {}),
+            }
+          : undefined
+      }
       data-dragging={isDragging || undefined}
       data-past-event={isEventInPast || undefined}
       onClick={onClick}

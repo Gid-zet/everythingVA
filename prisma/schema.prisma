@@ -69,19 +69,57 @@ model Account {
 
   binaryIndex Json?
 
-  token          String    @unique
-  refreshToken   String? // Add refresh token field
-  tokenExpiresAt DateTime? // Add token expiration field
-  provider       String
+  // Provider credentials. Encrypted at rest (see src/server/security/crypto.ts)
+  // and never selected into anything returned to the client.
+  token          String
+  refreshToken   String?
+  tokenExpiresAt DateTime?
+  provider       String // integration layer, e.g. "Aurinko"
+  serviceType    String? // underlying mailbox: Google | Office365 | IMAP | iCloud | EWS
   emailAddress   String
   name           String
 
   nextDeltaToken String?
 
+  // Connection health, shown in account settings and the account switcher.
+  status        AccountStatus @default(active)
+  statusMessage String?
+  lastSyncedAt  DateTime?
+  createdAt     DateTime      @default(now())
+
   user           User           @relation(fields: [userId], references: [id])
   threads        Thread[]
   emailAddresses EmailAddress[]
   calendars      Calendar[]
+  drafts         Draft[]
+
+  @@index([userId])
+}
+
+enum AccountStatus {
+  active
+  syncing
+  needs_reauth
+  error
+}
+
+/// Locally autosaved compose/reply drafts. Sent through the provider on send.
+model Draft {
+  id        String   @id @default(cuid())
+  accountId String
+  account   Account  @relation(fields: [accountId], references: [id])
+  threadId  String?
+  mode      String   @default("new") // new | reply | replyAll | forward
+  subject   String   @default("")
+  body      String   @default("")
+  to        Json     @default("[]")
+  cc        Json     @default("[]")
+  bcc       Json     @default("[]")
+  inReplyTo String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([accountId, updatedAt])
 }
 
 //     // "dev": "next dev --turbo | egrep -v '^\\s?(GET|POST|OPTIONS)'",
@@ -101,6 +139,12 @@ model Thread {
   archivedAt   DateTime?
   trashedAt    DateTime?
   snoozedUntil DateTime?
+  spamAt       DateTime?
+  starred      Boolean   @default(false)
+
+  // Cached AI summary of the conversation, refreshed when new mail arrives.
+  summary          String?
+  summaryUpdatedAt DateTime?
 
   inboxStatus Boolean @default(true)
   draftStatus Boolean @default(false)
@@ -115,6 +159,7 @@ model Thread {
   @@index([sentStatus])
   @@index([lastMessageDate])
   @@index([accountId, trashedAt])
+  @@index([accountId, starred])
   @@index([accountId, snoozedUntil])
 }
 
@@ -350,8 +395,12 @@ model Calendar {
   isPrimary   Boolean @default(false)
   isReadOnly  Boolean @default(false)
 
-  // Aurinko calendar ID
-  aurinkoCalendarId String? @unique
+  // Provider calendar ID (unique per account, not globally)
+  aurinkoCalendarId String?
+  accessRole        String? // owner | writer | reader
+
+  // Per-user display preference
+  isVisible Boolean @default(true)
 
   // Sync settings
   lastSyncAt  DateTime?
@@ -362,6 +411,7 @@ model Calendar {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  @@unique([accountId, aurinkoCalendarId])
   @@index([accountId])
   @@index([isPrimary])
 }
