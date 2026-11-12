@@ -9,6 +9,7 @@ export default {
       fontFamily: {
         sans: ["var(--font-geist-sans)", ...fontFamily.sans],
         display: ["var(--font-display)", "var(--font-geist-sans)", ...fontFamily.sans],
+        serif: ["var(--font-serif)", "Georgia", ...fontFamily.serif],
       },
       borderRadius: {
         lg: "var(--radius)",
