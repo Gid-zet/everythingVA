@@ -133,10 +133,27 @@ export function HeroInbox({
 
   const done = step >= ROWS.length;
 
+  // Soft light that follows the pointer across the window (skipped for reduced motion).
+  const windowRef = React.useRef<HTMLDivElement>(null);
+  const onPointerMove = (e: React.PointerEvent) => {
+    if (reduced || !windowRef.current) return;
+    const r = windowRef.current.getBoundingClientRect();
+    windowRef.current.style.setProperty("--mx", `${e.clientX - r.left}px`);
+    windowRef.current.style.setProperty("--my", `${e.clientY - r.top}px`);
+  };
+
   return (
     <div className="relative">
       {/* Window */}
-      <div className="relative overflow-hidden rounded-[22px] border border-foreground/10 bg-background shadow-[0_1px_0_rgba(255,255,255,0.6)_inset,0_30px_80px_-30px_rgba(40,36,120,0.35),0_12px_24px_-12px_rgba(0,0,0,0.12)] dark:shadow-[0_30px_80px_-30px_rgba(0,0,0,0.8)]">
+      <div
+        ref={windowRef}
+        onPointerMove={onPointerMove}
+        className="group/window relative overflow-hidden rounded-[22px] border border-foreground/10 bg-background shadow-[0_1px_0_rgba(255,255,255,0.6)_inset,0_30px_80px_-30px_rgba(40,36,120,0.35),0_12px_24px_-12px_rgba(0,0,0,0.12)] dark:shadow-[0_30px_80px_-30px_rgba(0,0,0,0.8)]">
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-0 z-10 opacity-0 transition-opacity duration-300 group-hover/window:opacity-100"
+          style={{ background: "radial-gradient(260px circle at var(--mx, 50%) var(--my, 30%), hsl(var(--brand) / 0.09), transparent 70%)" }}
+        />
         <div className="flex h-11 items-center gap-2 border-b border-foreground/[0.07] bg-sidebar px-4">
           <span className="size-2.5 rounded-full bg-foreground/15" />
           <span className="size-2.5 rounded-full bg-foreground/15" />
