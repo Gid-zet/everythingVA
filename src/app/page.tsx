@@ -1,156 +1,152 @@
 import React from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { Bricolage_Grotesque } from "next/font/google";
-import { Check } from "lucide-react";
-import {
-  LoginLink,
-  RegisterLink,
-} from "@kinde-oss/kinde-auth-nextjs/components";
+import { Bricolage_Grotesque, Instrument_Serif } from "next/font/google";
+import { Check, KeyRound, LockKeyhole, Unplug } from "lucide-react";
+import { LoginLink, RegisterLink } from "@kinde-oss/kinde-auth-nextjs/components";
 
 import { getKindeServerSession } from "@/lib/kinde";
-import { ModeToggle } from "@/components/theme-toggle";
 import { Hero } from "@/components/landing/hero";
 import { AskDemo, DraftDemo, OrganizerDemo, UnsubscribeDemo } from "@/components/landing/feature-demos";
 import { CalendarDemo } from "@/components/landing/calendar-demo";
 import { KeyboardDemo } from "@/components/landing/keyboard-demo";
 import { cn } from "@/lib/utils";
-import {
-  FREE_ACCOUNTS_PER_USER,
-  FREE_CREDITS_PER_DAY,
-  PRO_ACCOUNTS_PER_USER,
-} from "@/app/constants";
+import { FREE_ACCOUNTS_PER_USER, FREE_CREDITS_PER_DAY, PRO_ACCOUNTS_PER_USER } from "@/app/constants";
 
-const display = Bricolage_Grotesque({
-  subsets: ["latin"],
-  variable: "--font-display",
-  display: "swap",
-});
+const display = Bricolage_Grotesque({ subsets: ["latin"], variable: "--font-display", display: "swap" });
+const serif = Instrument_Serif({ subsets: ["latin"], weight: "400", variable: "--font-serif", display: "swap" });
 
 const primaryBtn =
-  "inline-flex h-11 items-center justify-center rounded-full bg-foreground px-6 text-[15px] font-medium text-background shadow-[0_1px_0_rgba(255,255,255,0.15)_inset,0_8px_20px_-8px_rgba(0,0,0,0.4)] transition-transform hover:-translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background";
+  "inline-flex h-11 items-center justify-center rounded-[14px] bg-white px-5 text-[14px] font-semibold text-black transition-all hover:bg-white/90 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60 focus-visible:ring-offset-2 focus-visible:ring-offset-black";
 const secondaryBtn =
-  "inline-flex h-11 items-center justify-center rounded-full border border-foreground/15 px-6 text-[15px] font-medium transition-colors hover:bg-foreground/[0.04] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
-const invertedBtn =
-  "inline-flex h-11 items-center rounded-full bg-background px-6 text-[15px] font-medium text-foreground transition-transform hover:-translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
+  "inline-flex h-11 items-center justify-center rounded-[14px] border border-white/10 bg-white/[0.03] px-5 text-[14px] font-semibold text-white/80 transition-colors hover:border-white/20 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50";
 
-const SECTION_H2 =
-  "font-display text-[clamp(2rem,4.2vw,3.25rem)] font-semibold leading-[1.02] tracking-[-0.035em] text-balance";
-const CARD_H3 = "font-display text-2xl font-semibold tracking-[-0.025em]";
+/** Section heading: light grotesk with a white→fade fill; `dim` part is quieter. */
+function Heading({ children, dim, className }: { children: React.ReactNode; dim?: React.ReactNode; className?: string }) {
+  return (
+    <h2
+      className={cn(
+        "max-w-[18ch] text-balance font-sans text-[clamp(2.25rem,5vw,3.5rem)] font-normal leading-[1.05] tracking-[-0.045em]",
+        className,
+      )}
+    >
+      <span className="text-gradient">{children}</span>
+      {dim && <span className="text-white/40"> {dim}</span>}
+    </h2>
+  );
+}
+
+const Lead = ({ children, className }: { children: React.ReactNode; className?: string }) => (
+  <p className={cn("mt-5 max-w-[54ch] text-[18px] leading-[1.6] text-[hsl(var(--muted-foreground))]", className)}>{children}</p>
+);
+
+const CardTitle = ({ children }: { children: React.ReactNode }) => (
+  <h3 className="text-[18px] font-medium tracking-[-0.01em] text-white">{children}</h3>
+);
+const CardText = ({ children }: { children: React.ReactNode }) => (
+  <p className="mt-1.5 max-w-[46ch] text-[14px] leading-relaxed text-[hsl(var(--muted-foreground))]">{children}</p>
+);
 
 const LandingPage = async () => {
   const { getUser } = getKindeServerSession();
   const user = await getUser();
   const signedIn = !!user?.id;
 
-  const heroActions = signedIn ? (
+  const cta = signedIn ? (
     <Link href="/mail" className={primaryBtn}>
       Open your inbox
     </Link>
   ) : (
     <>
-      <RegisterLink className={primaryBtn}>Start free</RegisterLink>
+      <RegisterLink className={primaryBtn}>Get started</RegisterLink>
       <LoginLink className={secondaryBtn}>Sign in</LoginLink>
     </>
   );
 
   return (
-    <div
-      className={cn(
-        display.variable,
-        "relative min-h-screen overflow-x-hidden bg-background text-foreground",
-      )}
-    >
-      {/* One quiet light behind the hero, nothing else decorative */}
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-x-0 top-0 h-[760px] bg-[radial-gradient(55%_60%_at_72%_18%,hsl(var(--brand)/0.11),transparent_70%)]"
-      />
-
-      <header className="sticky top-0 z-40 bg-background/70 backdrop-blur-xl">
+    <div className={cn(display.variable, serif.variable, "dark landing min-h-screen overflow-x-hidden text-[hsl(var(--foreground))] antialiased")}>
+      <header className="sticky top-0 z-40 border-b border-white/[0.06] bg-black/60 backdrop-blur-xl">
         <nav className="mx-auto flex h-16 max-w-[1200px] items-center gap-8 px-5 sm:px-8">
-          <Link
-            href="/"
-            className="flex items-center gap-2.5 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            aria-label="EverythingVA home"
-          >
-            <Image src="/logo.png" alt="" width={28} height={28} className="rounded-lg dark:invert" />
-            <span className="font-display text-[17px] font-semibold tracking-[-0.02em]">
-              EverythingVA
-            </span>
+          <Link href="/" className="flex items-center gap-2.5 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50" aria-label="EverythingVA home">
+            <Image src="/logo.png" alt="" width={24} height={24} className="rounded-md invert" />
+            <span className="text-[16px] font-semibold tracking-[-0.02em] text-white">EverythingVA</span>
           </Link>
-          <div className="hidden items-center gap-6 text-[14px] text-muted-foreground md:flex">
-            <a href="#features" className="transition-colors hover:text-foreground">Features</a>
-            <a href="#calendar" className="transition-colors hover:text-foreground">Calendar</a>
-            <a href="#keyboard" className="transition-colors hover:text-foreground">Shortcuts</a>
-            <a href="#pricing" className="transition-colors hover:text-foreground">Pricing</a>
+          <div className="hidden items-center gap-6 text-[14px] text-white/60 md:flex">
+            {[
+              ["Features", "#features"],
+              ["Organizer", "#organizer"],
+              ["Calendar", "#calendar"],
+              ["Shortcuts", "#keyboard"],
+              ["Pricing", "#pricing"],
+            ].map(([label, href]) => (
+              <a key={href} href={href} className="transition-colors hover:text-white">
+                {label}
+              </a>
+            ))}
           </div>
           <div className="ml-auto flex items-center gap-2">
-            <ModeToggle />
             {signedIn ? (
-              <Link href="/mail" className={cn(primaryBtn, "h-9 px-4 text-[14px]")}>
+              <Link href="/mail" className={cn(primaryBtn, "h-9 rounded-xl px-4 text-[13px]")}>
                 Open inbox
               </Link>
             ) : (
               <>
-                <LoginLink className="hidden px-3 text-[14px] text-muted-foreground transition-colors hover:text-foreground sm:inline">
-                  Sign in
-                </LoginLink>
-                <RegisterLink className={cn(primaryBtn, "h-9 px-4 text-[14px]")}>
-                  Start free
-                </RegisterLink>
+                <LoginLink className="hidden px-3 text-[14px] text-white/60 transition-colors hover:text-white sm:inline">Log in</LoginLink>
+                <RegisterLink className={cn(secondaryBtn, "h-9 rounded-xl px-4 text-[13px] text-white")}>Get started</RegisterLink>
               </>
             )}
           </div>
         </nav>
       </header>
 
-      <main className="relative">
-        <Hero actions={heroActions} />
+      <main>
+        <Hero actions={cta} />
 
-        {/* What it does */}
-        <section id="features" className="scroll-mt-20 border-t border-foreground/[0.07]">
-          <div className="mx-auto max-w-[1200px] px-5 py-24 sm:px-8 lg:py-32">
-            <div className="grid gap-6 lg:grid-cols-[1fr_1.3fr] lg:items-end">
-              <h2 className={SECTION_H2}>The busywork of email, done before you open it.</h2>
-              <p className="max-w-[52ch] text-[17px] leading-relaxed text-muted-foreground lg:justify-self-end">
-                Connect Gmail or Outlook once. EverythingVA keeps it in sync, learns how you write, and handles the
-                repetitive parts. Everything below is live: try it.
-              </p>
-            </div>
+        {/* Providers */}
+        <section aria-label="Works with" className="mx-auto max-w-[1200px] px-5 pb-24 sm:px-8">
+          <p className="text-center text-[14px] text-white/45">Works with the inbox you already have</p>
+          <ul className="mx-auto mt-6 flex max-w-[760px] flex-wrap items-center justify-center gap-x-10 gap-y-4 text-[19px] font-medium tracking-[-0.02em] text-white/55">
+            {["Gmail", "Google Workspace", "Outlook", "Microsoft 365", "iCloud", "IMAP"].map((p) => (
+              <li key={p}>{p}</li>
+            ))}
+          </ul>
+        </section>
 
-            <div className="mt-16 grid grid-cols-1 gap-4 md:grid-cols-6">
-              <article className="rounded-3xl border border-foreground/[0.08] bg-sidebar p-7 md:col-span-4 md:p-9">
-                <h3 className={CARD_H3}>Ask your inbox anything</h3>
-                <p className="mt-2 max-w-[44ch] text-muted-foreground">
-                  Search by meaning, not keywords. Each answer points to the email it came from.
-                </p>
+        <div className="hairline-x mx-auto max-w-[1200px]" />
+
+        {/* Features */}
+        <section id="features" className="scroll-mt-20">
+          <div className="mx-auto max-w-[1200px] px-5 py-28 sm:px-8 lg:py-36">
+            <Heading dim="Try it right here.">Everything your inbox should already do.</Heading>
+            <Lead>Each card below is the real interaction, running in your browser. No sign-up needed to play.</Lead>
+
+            <div className="mt-14 grid grid-cols-1 gap-4 md:grid-cols-6">
+              <article className="glow-card p-7 md:col-span-4 md:p-9">
+                <CardTitle>Ask your inbox anything</CardTitle>
+                <CardText>Search by meaning, not keywords. Each answer points to the email it came from.</CardText>
                 <div className="mt-8">
                   <AskDemo />
                 </div>
               </article>
 
-              <article className="rounded-3xl border border-foreground/[0.08] bg-background p-7 md:col-span-2 md:p-8">
-                <h3 className={CARD_H3}>Unsubscribe in bulk</h3>
-                <p className="mt-2 text-muted-foreground">See who sends you the most, then leave the lists you never read.</p>
+              <article className="glow-card p-7 md:col-span-2 md:p-8">
+                <CardTitle>Unsubscribe in bulk</CardTitle>
+                <CardText>See who sends the most, then leave the lists you never read.</CardText>
                 <UnsubscribeDemo />
               </article>
 
-              <article className="rounded-3xl border border-foreground/[0.08] bg-background p-7 md:col-span-4 md:p-9">
-                <h3 className={CARD_H3}>Rules that run themselves</h3>
-                <p className="mt-2 max-w-[48ch] text-muted-foreground">
-                  Describe a rule in plain English. New mail gets labelled, starred or archived in your real mailbox, and
+              <article id="organizer" className="glow-card scroll-mt-24 p-7 md:col-span-4 md:p-9">
+                <CardTitle>Rules that run themselves</CardTitle>
+                <CardText>
+                  Describe a rule in plain English. New mail is labelled, starred or archived in your real mailbox, and
                   every change can be undone.
-                </p>
+                </CardText>
                 <OrganizerDemo />
               </article>
 
-              <article className="flex flex-col rounded-3xl border border-foreground/[0.08] bg-sidebar p-7 md:col-span-2 md:p-8">
-                <h3 className={CARD_H3}>Replies in your voice</h3>
-                <p className="mt-2 text-muted-foreground">
-                  Start typing and the rest of the sentence appears. Keep it with one key, or let the AI draft the whole
-                  reply.
-                </p>
+              <article className="glow-card flex flex-col p-7 md:col-span-2 md:p-8">
+                <CardTitle>Replies in your voice</CardTitle>
+                <CardText>The rest of the sentence appears as you type. Keep it with one key.</CardText>
                 <div className="mt-auto">
                   <DraftDemo />
                 </div>
@@ -159,31 +155,30 @@ const LandingPage = async () => {
           </div>
         </section>
 
+        <div className="hairline-x mx-auto max-w-[1200px]" />
+
         {/* Calendar */}
-        <section id="calendar" className="scroll-mt-20 border-t border-foreground/[0.07] bg-sidebar">
-          <div className="mx-auto max-w-[1200px] px-5 py-24 sm:px-8 lg:py-32">
-            <div className="max-w-[640px]">
-              <h2 className={SECTION_H2}>Your calendar lives next to your inbox.</h2>
-              <p className="mt-5 max-w-[52ch] text-[17px] leading-relaxed text-muted-foreground">
-                Google and Outlook calendars side by side. Turn an email into an event, answer invites, and see when
-                guests are free, without opening another app.
-              </p>
-            </div>
-            <div className="mt-12">
+        <section id="calendar" className="scroll-mt-20">
+          <div className="mx-auto max-w-[1200px] px-5 py-28 sm:px-8 lg:py-36">
+            <Heading dim="Not in another tab.">Your calendar, beside your inbox.</Heading>
+            <Lead>
+              Google and Outlook calendars side by side. Turn an email into an event, answer invitations and see when
+              guests are free.
+            </Lead>
+            <div className="glow-card mt-14 p-4 sm:p-6">
               <CalendarDemo />
             </div>
           </div>
         </section>
 
+        <div className="hairline-x mx-auto max-w-[1200px]" />
+
         {/* Keyboard */}
-        <section id="keyboard" className="scroll-mt-16 overflow-hidden bg-[hsl(240_9%_8%)] text-white">
-          <div className="mx-auto grid max-w-[1200px] grid-cols-1 gap-14 px-5 py-24 sm:px-8 lg:grid-cols-[1fr_1.1fr] lg:items-center lg:py-32">
+        <section id="keyboard" className="scroll-mt-16">
+          <div className="mx-auto grid max-w-[1200px] grid-cols-1 gap-14 px-5 py-28 sm:px-8 lg:grid-cols-[1fr_1.1fr] lg:items-center lg:py-36">
             <div>
-              <h2 className={SECTION_H2}>Your hands never leave the keyboard.</h2>
-              <p className="mt-5 max-w-[46ch] text-[17px] leading-relaxed text-white/60">
-                Move, finish and search without reaching for the mouse. Select a run of threads and clear them in one
-                keystroke.
-              </p>
+              <Heading dim="Your hands stay on the keys.">Built for speed.</Heading>
+              <Lead>Move, finish and search without the mouse. Select a run of threads and clear them in one keystroke.</Lead>
               <dl className="mt-10 grid max-w-md grid-cols-[auto_1fr] gap-x-8 gap-y-3 text-[15px]">
                 {[
                   ["J  K", "Next and previous thread"],
@@ -194,35 +189,73 @@ const LandingPage = async () => {
                   ["/", "Search"],
                 ].map(([k, v]) => (
                   <React.Fragment key={k}>
-                    <dt className="whitespace-pre font-medium text-white">{k}</dt>
-                    <dd className="text-white/60">{v}</dd>
+                    <dt className="whitespace-pre font-mono text-[13px] text-white">{k}</dt>
+                    <dd className="text-white/55">{v}</dd>
                   </React.Fragment>
                 ))}
               </dl>
             </div>
-            <KeyboardDemo />
+            <div className="glow-card p-5 sm:p-7">
+              <KeyboardDemo />
+            </div>
           </div>
         </section>
 
+        <div className="hairline-x mx-auto max-w-[1200px]" />
+
+        {/* Trust */}
+        <section aria-labelledby="trust" className="mx-auto max-w-[1200px] px-5 py-28 sm:px-8 lg:py-36">
+          <Heading dim="Always.">
+            <span id="trust">You stay in control.</span>
+          </Heading>
+          <div className="mt-14 grid gap-4 md:grid-cols-3">
+            {[
+              {
+                icon: KeyRound,
+                title: "We never see your password",
+                text: "You sign in on Google's, Microsoft's or your mail server's own page. We receive an access grant, nothing more.",
+              },
+              {
+                icon: LockKeyhole,
+                title: "Encrypted at rest",
+                text: "Access tokens are encrypted on our servers and never sent to your browser.",
+              },
+              {
+                icon: Unplug,
+                title: "Leave whenever you like",
+                text: "Disconnecting revokes access and deletes our copy. Nothing is removed from your mailbox.",
+              },
+            ].map((f) => (
+              <div key={f.title} className="glow-card p-7">
+                <span className="flex size-10 items-center justify-center rounded-xl border border-white/10 bg-white/[0.04]">
+                  <f.icon className="size-[18px] text-white/80" />
+                </span>
+                <h3 className="mt-6 text-[16px] font-medium text-white">{f.title}</h3>
+                <p className="mt-1.5 text-[14px] leading-relaxed text-[hsl(var(--muted-foreground))]">{f.text}</p>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <div className="hairline-x mx-auto max-w-[1200px]" />
+
         {/* Pricing */}
         <section id="pricing" className="scroll-mt-20">
-          <div className="mx-auto max-w-[1200px] px-5 py-24 sm:px-8 lg:py-32">
-            <h2 className={cn(SECTION_H2, "max-w-[18ch]")}>
-              Start free. Upgrade when it earns it.
-            </h2>
+          <div className="mx-auto max-w-[1200px] px-5 py-28 sm:px-8 lg:py-36">
+            <Heading dim="Upgrade when it earns it.">Start free.</Heading>
             <div className="mt-14 grid gap-4 md:grid-cols-2">
-              <div className="rounded-3xl border border-foreground/[0.1] p-8 md:p-10">
-                <h3 className={CARD_H3}>Free</h3>
-                <p className="mt-1 text-muted-foreground">Try it on your real inbox.</p>
-                <ul className="mt-8 space-y-3 text-[15px]">
+              <div className="glow-card p-8 md:p-10">
+                <h3 className="text-[18px] font-medium text-white">Free</h3>
+                <p className="mt-1 text-[14px] text-[hsl(var(--muted-foreground))]">Try it on your real inbox.</p>
+                <ul className="mt-8 space-y-3 text-[15px] text-white/85">
                   {[
                     `${FREE_CREDITS_PER_DAY} AI questions a day`,
                     `Up to ${FREE_ACCOUNTS_PER_USER} email accounts`,
-                    "AI drafts, search and organizer",
-                    "Bulk unsubscribe and snooze",
+                    "Organizer rules, drafts and search",
+                    "Calendar, bulk unsubscribe and snooze",
                   ].map((f) => (
                     <li key={f} className="flex gap-3">
-                      <Check className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+                      <Check className="mt-0.5 size-4 shrink-0 text-white/40" />
                       {f}
                     </li>
                   ))}
@@ -231,19 +264,19 @@ const LandingPage = async () => {
                   {signedIn ? (
                     <Link href="/mail" className={secondaryBtn}>Open your inbox</Link>
                   ) : (
-                    <RegisterLink className={secondaryBtn}>Start free</RegisterLink>
+                    <RegisterLink className={secondaryBtn}>Get started</RegisterLink>
                   )}
                 </div>
               </div>
-
-              <div className="relative overflow-hidden rounded-3xl bg-foreground p-8 text-background md:p-10">
+              <div className="glow-card overflow-hidden p-8 md:p-10">
                 <div
                   aria-hidden
-                  className="pointer-events-none absolute -right-24 -top-24 size-72 rounded-full bg-[hsl(var(--brand)/0.55)] blur-3xl"
+                  className="pointer-events-none absolute -right-24 -top-24 size-80 rounded-full blur-3xl"
+                  style={{ background: "hsl(var(--brand) / 0.25)" }}
                 />
-                <h3 className={cn(CARD_H3, "relative")}>Pro</h3>
-                <p className="relative mt-1 text-background/65">For people who live in their inbox.</p>
-                <ul className="relative mt-8 space-y-3 text-[15px]">
+                <h3 className="relative text-[18px] font-medium text-white">Pro</h3>
+                <p className="relative mt-1 text-[14px] text-[hsl(var(--muted-foreground))]">For people who live in their inbox.</p>
+                <ul className="relative mt-8 space-y-3 text-[15px] text-white/85">
                   {[
                     "Unlimited AI questions",
                     `Up to ${PRO_ACCOUNTS_PER_USER} email accounts`,
@@ -258,26 +291,44 @@ const LandingPage = async () => {
                 </ul>
                 <div className="relative mt-10">
                   {signedIn ? (
-                    <Link href="/mail" className={invertedBtn}>Upgrade from your inbox</Link>
+                    <Link href="/mail" className={primaryBtn}>Upgrade from your inbox</Link>
                   ) : (
-                    <RegisterLink className={invertedBtn}>Start free, upgrade later</RegisterLink>
+                    <RegisterLink className={primaryBtn}>Start free, upgrade later</RegisterLink>
                   )}
                 </div>
               </div>
             </div>
           </div>
         </section>
+
+        {/* Closing */}
+        <section className="relative overflow-hidden border-t border-white/[0.06]">
+          <div
+            aria-hidden
+            className="pointer-events-none absolute left-1/2 top-0 h-[520px] w-[900px] -translate-x-1/2"
+            style={{ background: "radial-gradient(closest-side, rgb(255 255 255 / 0.08), transparent)" }}
+          />
+          <div className="relative mx-auto max-w-[1200px] px-5 py-32 text-center sm:px-8 lg:py-44">
+            <h2 className="mx-auto max-w-[14ch] font-serif text-[clamp(3rem,8vw,5.5rem)] font-normal leading-[1] tracking-[-0.02em] text-gradient">
+              Get your hours back.
+            </h2>
+            <p className="mx-auto mt-6 max-w-[44ch] text-[18px] text-[hsl(var(--muted-foreground))]">
+              Connect an inbox in under a minute. Free to start, no card needed.
+            </p>
+            <div className="mt-10 flex flex-wrap items-center justify-center gap-3">{cta}</div>
+          </div>
+        </section>
       </main>
 
-      <footer className="border-t border-foreground/[0.07]">
-        <div className="mx-auto flex max-w-[1200px] flex-col gap-6 px-5 py-10 text-[14px] text-muted-foreground sm:flex-row sm:items-center sm:px-8">
+      <footer className="border-t border-white/[0.06]">
+        <div className="mx-auto flex max-w-[1200px] flex-col gap-6 px-5 py-10 text-[13px] text-white/45 sm:flex-row sm:items-center sm:px-8">
           <div className="flex items-center gap-2.5">
-            <Image src="/logo.png" alt="" width={22} height={22} className="rounded-md dark:invert" />
-            <span className="font-display font-semibold text-foreground">EverythingVA</span>
+            <Image src="/logo.png" alt="" width={20} height={20} className="rounded-md invert" />
+            <span className="font-semibold text-white/80">EverythingVA</span>
           </div>
           <div className="flex gap-6 sm:ml-auto">
-            <Link href="/privacy" className="transition-colors hover:text-foreground">Privacy</Link>
-            <Link href="/terms-of-service" className="transition-colors hover:text-foreground">Terms</Link>
+            <Link href="/privacy" className="transition-colors hover:text-white">Privacy</Link>
+            <Link href="/terms-of-service" className="transition-colors hover:text-white">Terms</Link>
           </div>
         </div>
       </footer>

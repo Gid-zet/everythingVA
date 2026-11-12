@@ -148,13 +148,13 @@ export function HeroInbox({
       <div
         ref={windowRef}
         onPointerMove={onPointerMove}
-        className="group/window relative overflow-hidden rounded-[22px] border border-foreground/10 bg-background shadow-[0_1px_0_rgba(255,255,255,0.6)_inset,0_30px_80px_-30px_rgba(40,36,120,0.35),0_12px_24px_-12px_rgba(0,0,0,0.12)] dark:shadow-[0_30px_80px_-30px_rgba(0,0,0,0.8)]">
+        className="glow-card group/window relative overflow-hidden bg-black/60 backdrop-blur">
         <div
           aria-hidden
           className="pointer-events-none absolute inset-0 z-10 opacity-0 transition-opacity duration-300 group-hover/window:opacity-100"
           style={{ background: "radial-gradient(260px circle at var(--mx, 50%) var(--my, 30%), hsl(var(--brand) / 0.09), transparent 70%)" }}
         />
-        <div className="flex h-11 items-center gap-2 border-b border-foreground/[0.07] bg-sidebar px-4">
+        <div className="flex h-11 items-center gap-2 border-b border-white/[0.07] px-4">
           <span className="size-2.5 rounded-full bg-foreground/15" />
           <span className="size-2.5 rounded-full bg-foreground/15" />
           <span className="size-2.5 rounded-full bg-foreground/15" />
@@ -233,8 +233,8 @@ export function HeroInbox({
         </ul>
 
         {/* Ask bar */}
-        <div className="border-t border-foreground/[0.07] bg-sidebar/70 p-3">
-          <div className="flex items-center gap-2 rounded-full border border-foreground/10 bg-background px-3.5 py-2 text-[13px] text-muted-foreground">
+        <div className="border-t border-white/[0.07] p-3">
+          <div className="flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.03] px-3.5 py-2 text-[13px] text-muted-foreground">
             <span className="size-1.5 rounded-full bg-brand" />
             {done
               ? "All caught up. Ask anything about your email."
