@@ -44,7 +44,7 @@ export function Hero({ actions }: { actions: React.ReactNode }) {
 
         <div className="mt-9 flex flex-wrap items-center gap-3">{actions}</div>
         <p className="mt-5 text-[13px] text-muted-foreground">
-          Free for Gmail. 15 AI questions a day, no card needed.
+          Works with Gmail, Outlook and iCloud. Free to start, no card needed.
         </p>
       </div>
 

@@ -11,6 +11,9 @@ import {
 import { getKindeServerSession } from "@/lib/kinde";
 import { ModeToggle } from "@/components/theme-toggle";
 import { Hero } from "@/components/landing/hero";
+import { AskDemo, DraftDemo, OrganizerDemo, UnsubscribeDemo } from "@/components/landing/feature-demos";
+import { CalendarDemo } from "@/components/landing/calendar-demo";
+import { KeyboardDemo } from "@/components/landing/keyboard-demo";
 import { cn } from "@/lib/utils";
 import {
   FREE_ACCOUNTS_PER_USER,
@@ -30,28 +33,6 @@ const secondaryBtn =
   "inline-flex h-11 items-center justify-center rounded-full border border-foreground/15 px-6 text-[15px] font-medium transition-colors hover:bg-foreground/[0.04] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 const invertedBtn =
   "inline-flex h-11 items-center rounded-full bg-background px-6 text-[15px] font-medium text-foreground transition-transform hover:-translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
-
-function Keycap({
-  children,
-  wide,
-  className,
-}: {
-  children: React.ReactNode;
-  wide?: boolean;
-  className?: string;
-}) {
-  return (
-    <kbd
-      className={cn(
-        "inline-flex h-14 items-center justify-center rounded-xl border border-white/15 bg-gradient-to-b from-white/[0.14] to-white/[0.04] font-sans text-xl font-semibold text-white shadow-[0_1px_0_rgba(255,255,255,0.25)_inset,0_-3px_0_rgba(0,0,0,0.35)_inset,0_6px_14px_-6px_rgba(0,0,0,0.6)] sm:h-16 sm:text-2xl",
-        wide ? "px-5" : "w-14 sm:w-16",
-        className,
-      )}
-    >
-      {children}
-    </kbd>
-  );
-}
 
 const SECTION_H2 =
   "font-display text-[clamp(2rem,4.2vw,3.25rem)] font-semibold leading-[1.02] tracking-[-0.035em] text-balance";
@@ -100,6 +81,7 @@ const LandingPage = async () => {
           </Link>
           <div className="hidden items-center gap-6 text-[14px] text-muted-foreground md:flex">
             <a href="#features" className="transition-colors hover:text-foreground">Features</a>
+            <a href="#calendar" className="transition-colors hover:text-foreground">Calendar</a>
             <a href="#keyboard" className="transition-colors hover:text-foreground">Shortcuts</a>
             <a href="#pricing" className="transition-colors hover:text-foreground">Pricing</a>
           </div>
@@ -130,13 +112,10 @@ const LandingPage = async () => {
         <section id="features" className="scroll-mt-20 border-t border-foreground/[0.07]">
           <div className="mx-auto max-w-[1200px] px-5 py-24 sm:px-8 lg:py-32">
             <div className="grid gap-6 lg:grid-cols-[1fr_1.3fr] lg:items-end">
-              <h2 className={SECTION_H2}>
-                The busywork of email, done before you open it.
-              </h2>
+              <h2 className={SECTION_H2}>The busywork of email, done before you open it.</h2>
               <p className="max-w-[52ch] text-[17px] leading-relaxed text-muted-foreground lg:justify-self-end">
-                Connect Gmail once. EverythingVA keeps it in sync, learns how you
-                write, and handles the repetitive parts so your attention goes to
-                the conversations that matter.
+                Connect Gmail or Outlook once. EverythingVA keeps it in sync, learns how you write, and handles the
+                repetitive parts. Everything below is live: try it.
               </p>
             </div>
 
@@ -146,103 +125,73 @@ const LandingPage = async () => {
                 <p className="mt-2 max-w-[44ch] text-muted-foreground">
                   Search by meaning, not keywords. Each answer points to the email it came from.
                 </p>
-                <div className="mt-8 space-y-3">
-                  <div className="ml-auto w-fit max-w-[85%] rounded-2xl rounded-br-md bg-foreground/[0.07] px-4 py-2.5 text-[14px]">
-                    When does my flight to Lisbon leave?
-                  </div>
-                  <div className="w-fit max-w-[85%] rounded-2xl rounded-bl-md bg-brand px-4 py-2.5 text-[14px] text-brand-foreground">
-                    Friday at 7:40am, TAP 1352. It&apos;s in your booking confirmation from October 28.
-                  </div>
+                <div className="mt-8">
+                  <AskDemo />
                 </div>
               </article>
 
-              <article className="rounded-3xl border border-foreground/[0.08] bg-background p-7 md:col-span-2 md:row-span-2 md:p-8">
+              <article className="rounded-3xl border border-foreground/[0.08] bg-background p-7 md:col-span-2 md:p-8">
                 <h3 className={CARD_H3}>Unsubscribe in bulk</h3>
-                <p className="mt-2 text-muted-foreground">
-                  See who sends you the most, then leave the lists you never read.
-                </p>
-                <ul className="mt-7 divide-y divide-foreground/[0.07] rounded-2xl border border-foreground/[0.08]">
-                  {(
-                    [
-                      ["Product Hunt Daily", 186, true],
-                      ["Medium Digest", 142, true],
-                      ["LinkedIn", 97, false],
-                      ["Notion Team", 41, true],
-                      ["Figma", 23, false],
-                    ] as const
-                  ).map(([name, n, off]) => (
-                    <li key={name} className="flex items-center gap-3 px-4 py-3 text-[14px]">
-                      <span className="min-w-0 flex-1 truncate">{name}</span>
-                      <span className="tabular-nums text-muted-foreground">{n}</span>
-                      <span
-                        className={cn(
-                          "w-[92px] rounded-full py-0.5 text-center text-[11px] font-medium",
-                          off
-                            ? "bg-foreground text-background"
-                            : "border border-foreground/15 text-muted-foreground",
-                        )}
-                      >
-                        {off ? "Unsubscribed" : "Keep"}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-                <p className="mt-5 text-[13px] text-muted-foreground">
-                  369 emails a month you&apos;ll no longer get.
-                </p>
+                <p className="mt-2 text-muted-foreground">See who sends you the most, then leave the lists you never read.</p>
+                <UnsubscribeDemo />
               </article>
 
-              <article className="rounded-3xl border border-foreground/[0.08] bg-background p-7 md:col-span-2 md:p-8">
+              <article className="rounded-3xl border border-foreground/[0.08] bg-background p-7 md:col-span-4 md:p-9">
+                <h3 className={CARD_H3}>Rules that run themselves</h3>
+                <p className="mt-2 max-w-[48ch] text-muted-foreground">
+                  Describe a rule in plain English. New mail gets labelled, starred or archived in your real mailbox, and
+                  every change can be undone.
+                </p>
+                <OrganizerDemo />
+              </article>
+
+              <article className="flex flex-col rounded-3xl border border-foreground/[0.08] bg-sidebar p-7 md:col-span-2 md:p-8">
                 <h3 className={CARD_H3}>Replies in your voice</h3>
                 <p className="mt-2 text-muted-foreground">
-                  Start typing and the rest appears. Press Tab to keep it.
+                  Start typing and the rest of the sentence appears. Keep it with one key, or let the AI draft the whole
+                  reply.
                 </p>
-                <p className="mt-6 rounded-2xl border border-foreground/[0.08] p-4 text-[14px] leading-relaxed">
-                  Thanks Daniel, section 4.2 works for us if
-                  <span className="text-muted-foreground/60"> we move the notice period to 30 days. Free tomorrow at 10?</span>
-                </p>
-              </article>
-
-              <article className="rounded-3xl border border-foreground/[0.08] bg-background p-7 md:col-span-2 md:p-8">
-                <h3 className={CARD_H3}>Sorted on arrival</h3>
-                <p className="mt-2 text-muted-foreground">
-                  Rules and AI file each email. Snoozed threads come back when you need them.
-                </p>
-                <div className="mt-6 flex flex-wrap gap-2 text-[13px]">
-                  {["Needs reply", "Waiting on", "Meetings", "Finance", "Clients", "Later"].map((c, i) => (
-                    <span
-                      key={c}
-                      className={cn(
-                        "rounded-full px-3 py-1",
-                        i === 0 ? "bg-brand text-brand-foreground" : "bg-foreground/[0.06]",
-                      )}
-                    >
-                      {c}
-                    </span>
-                  ))}
+                <div className="mt-auto">
+                  <DraftDemo />
                 </div>
               </article>
             </div>
           </div>
         </section>
 
+        {/* Calendar */}
+        <section id="calendar" className="scroll-mt-20 border-t border-foreground/[0.07] bg-sidebar">
+          <div className="mx-auto max-w-[1200px] px-5 py-24 sm:px-8 lg:py-32">
+            <div className="max-w-[640px]">
+              <h2 className={SECTION_H2}>Your calendar lives next to your inbox.</h2>
+              <p className="mt-5 max-w-[52ch] text-[17px] leading-relaxed text-muted-foreground">
+                Google and Outlook calendars side by side. Turn an email into an event, answer invites, and see when
+                guests are free, without opening another app.
+              </p>
+            </div>
+            <div className="mt-12">
+              <CalendarDemo />
+            </div>
+          </div>
+        </section>
+
         {/* Keyboard */}
-        <section id="keyboard" className="scroll-mt-16 bg-[hsl(240_9%_8%)] text-white">
-          <div className="mx-auto grid max-w-[1200px] grid-cols-1 gap-14 px-5 py-24 sm:px-8 lg:grid-cols-2 lg:items-center lg:py-32">
+        <section id="keyboard" className="scroll-mt-16 overflow-hidden bg-[hsl(240_9%_8%)] text-white">
+          <div className="mx-auto grid max-w-[1200px] grid-cols-1 gap-14 px-5 py-24 sm:px-8 lg:grid-cols-[1fr_1.1fr] lg:items-center lg:py-32">
             <div>
               <h2 className={SECTION_H2}>Your hands never leave the keyboard.</h2>
               <p className="mt-5 max-w-[46ch] text-[17px] leading-relaxed text-white/60">
-                Move, finish and search without reaching for the mouse. Select a
-                run of threads and clear them in one keystroke.
+                Move, finish and search without reaching for the mouse. Select a run of threads and clear them in one
+                keystroke.
               </p>
               <dl className="mt-10 grid max-w-md grid-cols-[auto_1fr] gap-x-8 gap-y-3 text-[15px]">
                 {[
                   ["J  K", "Next and previous thread"],
-                  ["D", "Mark done"],
-                  ["U", "Back to inbox"],
+                  ["E", "Archive"],
+                  ["S", "Star"],
+                  ["H", "Snooze until tomorrow"],
                   ["Shift V", "Select several threads"],
                   ["/", "Search"],
-                  ["Ctrl K", "Command menu"],
                 ].map(([k, v]) => (
                   <React.Fragment key={k}>
                     <dt className="whitespace-pre font-medium text-white">{k}</dt>
@@ -251,25 +200,7 @@ const LandingPage = async () => {
                 ))}
               </dl>
             </div>
-            <div className="flex flex-col items-center gap-3 sm:gap-4" aria-hidden>
-              <div className="flex gap-3 sm:gap-4">
-                <Keycap>J</Keycap>
-                <Keycap>K</Keycap>
-                <Keycap className="border-[hsl(var(--brand)/0.7)] from-[hsl(var(--brand))] to-[hsl(var(--brand)/0.7)]">
-                  D
-                </Keycap>
-                <Keycap>U</Keycap>
-              </div>
-              <div className="flex gap-3 sm:gap-4">
-                <Keycap wide>Shift</Keycap>
-                <Keycap>V</Keycap>
-                <Keycap>/</Keycap>
-              </div>
-              <div className="flex gap-3 sm:gap-4">
-                <Keycap wide>Ctrl</Keycap>
-                <Keycap>K</Keycap>
-              </div>
-            </div>
+            <KeyboardDemo />
           </div>
         </section>
 
