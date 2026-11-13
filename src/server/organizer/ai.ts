@@ -2,15 +2,12 @@ import "server-only";
 import { z } from "zod";
 import { ACTION_TYPES, type RuleMessage } from "./types";
 
-const MODEL = "gpt-4o-mini";
+import { AI_RETRIES, chatModel } from "@/server/ai/provider";
 
-async function model() {
-  if (!process.env.OPENAI_API_KEY) {
-    throw new Error("The organizer's AI rules need OPENAI_API_KEY to be configured.");
-  }
-  const { openai } = await import("@ai-sdk/openai");
+/** Model for a task, from the configured provider (OpenAI, Gemini or custom). */
+async function model(tier: "fast" | "smart" = "fast") {
   const { generateObject } = await import("ai");
-  return { m: openai(MODEL), generateObject };
+  return { m: chatModel(tier), generateObject };
 }
 
 /** Email as the model sees it: untrusted data, truncated. */
@@ -44,6 +41,7 @@ export async function aiChooseRule(
   const { object } = await generateObject({
     model: m,
     temperature: 0,
+    maxRetries: AI_RETRIES,
     schema: z.object({
       reasoning: z.string().describe("Concise reason for the choice"),
       ruleName: z.string().nullable().describe("Exact rule name, or null if none applies"),
@@ -78,6 +76,7 @@ export async function aiPromptToRule(prompt: string) {
   const { object } = await generateObject({
     model: m,
     temperature: 0,
+    maxRetries: AI_RETRIES,
     schema: z.object({
       name: z.string().describe("Short rule name, e.g. 'Investor updates'"),
       instructions: z
@@ -118,9 +117,10 @@ export async function aiPromptToRule(prompt: string) {
 
 /** Draft a reply for DRAFT_REPLY actions. */
 export async function aiDraftReply(email: RuleMessage, me: { name: string; email: string }, guidance?: string) {
-  const { m, generateObject } = await model();
+  const { m, generateObject } = await model("smart");
   const { object } = await generateObject({
     model: m,
+    maxRetries: AI_RETRIES,
     schema: z.object({ reply: z.string().describe("Plain-text reply body, no subject line, no signature placeholder") }),
     system:
       `Write a concise, friendly reply on behalf of ${me.name}. Match the sender's tone. Do not invent facts, dates or commitments; ` +

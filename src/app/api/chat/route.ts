@@ -1,5 +1,5 @@
-import { Configuration, OpenAIApi } from "openai-edge";
-import { Message, OpenAIStream, StreamingTextResponse } from "ai";
+import { streamText, type CoreMessage } from "ai";
+import { AI_RETRIES, AiNotConfiguredError, chatModel, isAiConfigured } from "@/server/ai/provider";
 
 import { NextResponse } from "next/server";
 import { OramaManager } from "@/lib/orama";
@@ -8,15 +8,17 @@ import { getKindeUserForAPI } from "@/lib/kinde";
 import { getSubscriptionStatus } from "@/lib/stripe-actions";
 import { FREE_CREDITS_PER_DAY } from "@/app/constants";
 
-// export const runtime = "edge";
-
-const config = new Configuration({
-  apiKey: process.env.OPENAI_API_KEY,
-});
-const openai = new OpenAIApi(config);
+// Rebuilding a stale search index can take a while on rate-limited free tiers.
+export const maxDuration = 60;
 
 export async function POST(req: Request) {
   try {
+    if (!isAiConfigured()) {
+      return NextResponse.json(
+        { error: "AI isn't set up yet. Add GEMINI_API_KEY or OPENAI_API_KEY to the environment." },
+        { status: 503 },
+      );
+    }
     const user = await getKindeUserForAPI();
     if (!user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -169,6 +171,16 @@ export async function POST(req: Request) {
       );
     }
     
+    // Index built with another embedding model (provider switch) or never built:
+    // rebuild from stored mail before searching.
+    try {
+      if (oramaManager.stale || (await oramaManager.size()) === 0) {
+        await oramaManager.rebuild(150);
+      }
+    } catch (error) {
+      console.error("Search index rebuild failed:", (error as Error).message);
+    }
+
     const lastMessage = messages[messages.length - 1];
     if (!lastMessage?.content) {
       return NextResponse.json({ error: "Last message content is required" }, { status: 400 });
@@ -186,8 +198,8 @@ export async function POST(req: Request) {
       const errorMessage = error instanceof Error ? error.message : "Unknown error";
       
       // If it's an embeddings error, provide specific feedback
-      if (errorMessage.includes("embedding") || errorMessage.includes("OpenAI") || errorMessage.includes("OPENAI_API_KEY")) {
-        if (errorMessage.includes("not configured") || errorMessage.includes("OPENAI_API_KEY")) {
+      if (error instanceof AiNotConfiguredError || /embedding|rate limit|429|quota/i.test(errorMessage)) {
+        if (error instanceof AiNotConfiguredError) {
           return NextResponse.json(
             { error: "AI service is not properly configured. Please contact support." },
             { status: 500 }
@@ -236,66 +248,30 @@ export async function POST(req: Request) {
       - Keep your responses concise and relevant to the user's questions or the email being composed.`,
     };
 
-    // Create OpenAI chat completion with error handling
-    let response;
-    try {
-      response = await openai.createChatCompletion({
-        model: "gpt-4",
-        messages: [
-          prompt,
-          ...messages.filter((message: Message) => message.role === "user"),
-        ],
-        stream: true,
-      });
-    } catch (error) {
-      console.error("Error calling OpenAI API:", error);
-      const errorMessage = error instanceof Error ? error.message : "Unknown error";
-      
-      if (errorMessage.includes("API key") || errorMessage.includes("authentication")) {
-        return NextResponse.json(
-          { error: "AI service configuration error. Please contact support." },
-          { status: 500 }
-        );
-      }
-      
-      return NextResponse.json(
-        { error: `AI service unavailable: ${errorMessage}` },
-        { status: 503 }
-      );
-    }
-    
-    const stream = OpenAIStream(response, {
-      onStart: async () => {},
-      onCompletion: async (completion) => {
+    const history: CoreMessage[] = (messages as { role: string; content: string }[])
+      .filter((m) => m.role === "user" || m.role === "assistant")
+      .slice(-12)
+      .map((m) => ({ role: m.role as "user" | "assistant", content: String(m.content) }));
+
+    const result = await streamText({
+      model: chatModel("smart"),
+      maxRetries: AI_RETRIES,
+      system: String(prompt.content),
+      messages: history,
+      onFinish: async () => {
         try {
           const today = new Date().toDateString();
-          // Use upsert to handle the case where the record might not exist
-          // (though it should exist if we got past the rate limit check)
           await db.chatbotInteraction.upsert({
-            where: {
-              day_userId: {
-                day: today,
-                userId,
-              },
-            },
-            create: {
-              day: today,
-              count: 1,
-              userId,
-            },
-            update: {
-              count: {
-                increment: 1,
-              },
-            },
+            where: { day_userId: { day: today, userId } },
+            create: { day: today, count: 1, userId },
+            update: { count: { increment: 1 } },
           });
         } catch (error) {
           console.error("Error updating chatbot interaction count:", error);
-          // Don't fail the request if counting fails
         }
       },
     });
-    return new StreamingTextResponse(stream);
+    return result.toDataStreamResponse();
   } catch (error) {
     console.error("Unexpected error in chat API:", error);
     const errorMessage = error instanceof Error ? error.message : "An unexpected error occurred";

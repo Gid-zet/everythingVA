@@ -77,7 +77,11 @@ UI (Next.js, tRPC hooks)
 4. **Webhooks:** `AURINKO_WEBHOOK_BASE_URL` (or `NEXT_PUBLIC_URL`) must be publicly reachable. In development, use `cloudflared tunnel --url http://localhost:3001`.
 5. **Secrets:** set `TOKEN_ENCRYPTION_KEY` (32 bytes, base64) and `OAUTH_STATE_SECRET`. Existing plaintext tokens keep working and are encrypted the next time the account reconnects.
 6. **Database:** run `npm run db:migrate` to apply `prisma/migrations/*`, which is additive and idempotent.
-7. **AI features:** set `OPENAI_API_KEY`.
+7. **AI features:** choose a provider (`src/server/ai/provider.ts`). Everything goes through one OpenAI-compatible client:
+   - **Gemini:** `AI_PROVIDER=gemini` + `GEMINI_API_KEY` (from aistudio.google.com/apikey). Defaults: `gemini-3.5-flash-lite` for chat, rules and summaries, and `gemini-embedding-001` for search. The free tier is rate limited, and Google uses free-tier content to improve its products, so use a billing-enabled key for real users' mail.
+   - **OpenAI:** `AI_PROVIDER=openai` + `OPENAI_API_KEY` (defaults: `gpt-4o-mini`, `text-embedding-ada-002`).
+   - **Any OpenAI-compatible API** (OpenRouter, Groq, Moonshot…): `AI_PROVIDER=custom`, `AI_BASE_URL`, `AI_API_KEY`, `AI_MODEL`.
+   - **Overrides:** `AI_MODEL` / `AI_FAST_MODEL` for models, and `EMBEDDING_PROVIDER` / `EMBEDDING_MODEL` for embeddings separately. The search index records which embedding model built it and rebuilds itself after a switch.
 
 ## 5. Known limits and next steps
 
