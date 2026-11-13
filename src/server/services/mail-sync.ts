@@ -105,11 +105,15 @@ export async function scheduleCatchUp(accounts: { id: string; lastSyncedAt: Date
           await syncAccountNow(a.id, { neverSynced: !a.lastSyncedAt });
         } catch (error) {
           const message = (error as Error).message;
-          if (message !== "TOKEN_EXPIRED") {
-            await db.account
-              .update({ where: { id: a.id }, data: { status: "error", statusMessage: message.slice(0, 300) } })
-              .catch(() => undefined);
-          }
+          await db.account
+            .update({
+              where: { id: a.id },
+              data:
+                message === "TOKEN_EXPIRED"
+                  ? { status: "needs_reauth", statusMessage: "Access expired or was revoked. Reconnect this account." }
+                  : { status: "error", statusMessage: message.slice(0, 300) },
+            })
+            .catch(() => undefined);
           console.error(`Catch-up sync failed for ${a.id}:`, message);
         }
       }),
