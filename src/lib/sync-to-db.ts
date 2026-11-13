@@ -6,61 +6,55 @@ import type {
   EmailAttachment,
   EmailHeader,
 } from "./types";
-import pLimit from "p-limit";
 import { Prisma } from "@prisma/client";
 import { OramaManager } from "./orama";
-import { getEmbeddings } from "./embeddings";
+import { embedTexts } from "./embeddings";
 import { turndown } from "./turndown";
 
 async function syncEmailsToDatabase(emails: EmailMessage[], accountId: string) {
   console.log(`Syncing ${emails.length} emails to database`);
-  const limit = pLimit(10); // Process up to 10 emails concurrently
 
-  const oramaClient = new OramaManager(accountId);
-  // Must be awaited: the index is restored from the DB before any insert.
-  await oramaClient.initialize();
+  // 1. Mail first: it must land even if the AI/search side is down or rate limited.
+  for (const [index, email] of emails.entries()) {
+    await upsertEmail(email, index, accountId);
+  }
 
+  // 2. Search index (embeddings). Best effort.
   try {
-    async function syncToOrama() {
-      await Promise.all(
-        emails.map((email) => {
-          return limit(async () => {
-            try {
-            const body = turndown.turndown(
-              email.body ?? email.bodySnippet ?? "",
-            );
-            const payload = `From: ${email.from.name} <${email.from.address}>\nTo: ${email.to.map((t) => `${t.name} <${t.address}>`).join(", ")}\nSubject: ${email.subject}\nBody: ${body}\n SentAt: ${new Date(email.sentAt).toLocaleString()}`;
-            const bodyEmbedding = await getEmbeddings(payload);
-            await oramaClient.insert({
-              title: email.subject,
-              body: body,
-              rawBody: email.bodySnippet ?? "",
-              from: `${email.from.name} <${email.from.address}>`,
-              to: email.to.map((t) => `${t.name} <${t.address}>`),
-              sentAt: new Date(email.sentAt).toLocaleString(),
-              embeddings: bodyEmbedding,
-              threadId: email.threadId,
-            });
-            } catch (error) {
-              // One failed embedding must not abort indexing for the whole batch.
-              console.error(`Failed to index email ${email.id}:`, error);
-            }
-          });
-        }),
-      );
+    const index = new OramaManager(accountId);
+    await index.initialize();
+    if (index.stale) {
+      // Embedding model changed since the index was built: rebuild from the DB.
+      await index.rebuild();
+      return;
     }
-
-    async function syncToDB() {
-      for (const [index, email] of emails.entries()) {
-        await upsertEmail(email, index, accountId);
-      }
-    }
-
-    await Promise.all([syncToOrama(), syncToDB()]);
-
-    await oramaClient.saveIndex();
+    const docs = emails.map((email) => {
+      const body = turndown.turndown(email.body ?? email.bodySnippet ?? "");
+      const from = `${email.from.name} <${email.from.address}>`;
+      const to = email.to.map((t) => `${t.name} <${t.address}>`);
+      return {
+        doc: {
+          title: email.subject,
+          body,
+          rawBody: email.bodySnippet ?? "",
+          from,
+          to,
+          sentAt: new Date(email.sentAt).toLocaleString(),
+          threadId: email.threadId,
+        },
+        text: `From: ${from}
+To: ${to.join(", ")}
+Subject: ${email.subject}
+Body: ${body.slice(0, 4000)}
+SentAt: ${new Date(email.sentAt).toLocaleString()}`,
+      };
+    });
+    // One request per 50 emails instead of one per email.
+    const vectors = await embedTexts(docs.map((d) => d.text));
+    for (const [i, d] of docs.entries()) await index.insert({ ...d.doc, embeddings: vectors[i] });
+    await index.saveIndex();
   } catch (error) {
-    console.log("error", error);
+    console.error(`Search indexing skipped for ${accountId}:`, (error as Error).message);
   }
 }
 

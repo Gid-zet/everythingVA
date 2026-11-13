@@ -804,8 +804,12 @@ export const mailRouter = createTRPCRouter({
       const fresh = thread.summary && thread.summaryUpdatedAt && thread.summaryUpdatedAt >= thread.lastMessageDate;
       if (fresh && !input.refresh) return JSON.parse(thread.summary!) as ThreadInsight;
 
-      if (!process.env.OPENAI_API_KEY) {
-        throw new TRPCError({ code: "PRECONDITION_FAILED", message: "AI summaries need OPENAI_API_KEY to be configured." });
+      const ai = await import("@/server/ai/provider");
+      if (!ai.isAiConfigured()) {
+        throw new TRPCError({
+          code: "PRECONDITION_FAILED",
+          message: "AI summaries need an AI provider. Set GEMINI_API_KEY or OPENAI_API_KEY (and AI_PROVIDER).",
+        });
       }
       const { turndown } = await import("@/lib/turndown");
       const transcript = thread.emails
@@ -817,9 +821,9 @@ export const mailRouter = createTRPCRouter({
         .slice(0, 24_000);
 
       const { generateObject } = await import("ai");
-      const { openai } = await import("@ai-sdk/openai");
       const { object } = await generateObject({
-        model: openai("gpt-4o-mini"),
+        model: ai.chatModel("smart"),
+        maxRetries: ai.AI_RETRIES,
         schema: threadInsightSchema,
         system:
           "You summarise email threads for a busy professional. Be concrete and brief. " +
