@@ -81,7 +81,8 @@ export class OramaManager {
       mode: "hybrid",
       term: prompt,
       vector: { value: embeddings, property: "embeddings" },
-      similarity: 0.8,
+      // ada-002 cosine scores cluster high; newer models (Gemini, 3-small) lower.
+      similarity: embeddingModelId().includes("ada") ? 0.8 : 0.55,
       limit: numResults,
     });
   }

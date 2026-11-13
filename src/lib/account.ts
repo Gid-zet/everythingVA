@@ -258,11 +258,17 @@ class Account {
     try {
       // Start the sync process
       const daysWithin = Number(process.env.INITIAL_SYNC_DAYS ?? 14);
-      let syncResponse = await this.startSync(daysWithin); // Sync emails from the last 7 days
+      let syncResponse = await this.startSync(daysWithin);
 
-      // Wait until the sync is ready
-      while (!syncResponse.ready) {
-        await new Promise((resolve) => setTimeout(resolve, 1000)); // Wait for 1 second
+      // Aurinko prepares the mailbox asynchronously. Wait a bounded time so we
+      // stay inside the serverless time limit; the next catch-up resumes it.
+      for (let attempt = 0; !syncResponse.ready; attempt++) {
+        if (attempt >= 20) {
+          throw new Error(
+            "Your mail provider is still preparing the mailbox. Sync will continue automatically in a few minutes.",
+          );
+        }
+        await new Promise((resolve) => setTimeout(resolve, 1500));
         syncResponse = await this.startSync(daysWithin);
       }
 
@@ -301,14 +307,19 @@ class Account {
         deltaToken: storedDeltaToken,
       };
     } catch (error) {
+      // Surface the real reason instead of a generic "failed" (it ends up in
+      // Account.statusMessage, which the Accounts page shows).
       if (axios.isAxiosError(error)) {
-        console.error(
-          "Error during sync:",
-          JSON.stringify(error.response?.data, null, 2),
+        const status = error.response?.status;
+        const data = error.response?.data as { message?: string; code?: string } | undefined;
+        console.error("Error during sync:", status, JSON.stringify(data));
+        if (status === 401 || status === 403) throw new Error("TOKEN_EXPIRED");
+        throw new Error(
+          `Mail provider error${status ? ` (${status})` : ""}: ${data?.message ?? data?.code ?? error.message}`,
         );
-      } else {
-        console.error("Error during sync:", error);
       }
+      console.error("Error during sync:", error);
+      throw error;
     }
   }
 

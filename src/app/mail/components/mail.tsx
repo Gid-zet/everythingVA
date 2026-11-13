@@ -171,9 +171,14 @@ export function Mail({
             <div className={cn("pb-1", isCollapsed ? "flex justify-center" : "px-3")}>
               <ComposeButton isCollapsed={isCollapsed} />
             </div>
-            <SideBar isCollapsed={isCollapsed} />
-            <div className="flex-1"></div>
-            <AskAI isCollapsed={isCollapsed} />
+            {/* Scrolls when the window is short; Ask AI sits at the bottom when there's room. */}
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+              <div className="flex min-h-full flex-col">
+                <SideBar isCollapsed={isCollapsed} />
+                <div className="flex-1" />
+                <AskAI isCollapsed={isCollapsed} />
+              </div>
+            </div>
             <SidebarFooter isCollapsed={isCollapsed} />
           </div>
         </ResizablePanel>
