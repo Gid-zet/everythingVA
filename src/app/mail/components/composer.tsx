@@ -194,7 +194,7 @@ export function Composer({
   };
 
   const modeTabs = thread ? (
-    <div className="flex items-center gap-1 border-b px-3 py-1.5">
+    <div className={cn("flex items-center gap-1 border-b px-3 py-1.5", compact && "pr-11")}>
       {(
         [
           ["reply", "Reply", Reply],
