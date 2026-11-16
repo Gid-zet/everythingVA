@@ -5,7 +5,7 @@ import { mapSamRecord } from "../sources/sam-gov";
 import { mapCanadaBuysRow } from "../sources/canadabuys";
 import { detectChanges } from "../changes";
 import { buildAlerts } from "../alerts";
-import { applyGuardRails, type Qualification } from "../qualification-rules";
+import { applyGuardRails, statusAfterQualification, type Qualification } from "../qualification-rules";
 import { CCM_TEMPLATE } from "../ccm-template";
 
 const profile = CCM_TEMPLATE;
@@ -238,5 +238,21 @@ describe("applyGuardRails", () => {
   it("a passed deadline means do not pursue", () => {
     const r = applyGuardRails(base, { deadline: new Date("2026-11-01T00:00:00Z"), now });
     expect(r.recommendation).toBe("do_not_pursue");
+  });
+});
+
+describe("statusAfterQualification", () => {
+  it("only eligible results get the Qualified status", () => {
+    expect(statusAfterQualification("discovered", "qualified")).toBe("qualified");
+    expect(statusAfterQualification("discovered", "potentially_qualified")).toBe("qualified");
+    expect(statusAfterQualification("discovered", "requires_clarification")).toBe("under_review");
+    expect(statusAfterQualification("discovered", "not_qualified")).toBe("under_review");
+  });
+  it("re-assessing corrects an agent-set status", () => {
+    expect(statusAfterQualification("qualified", "requires_clarification")).toBe("under_review");
+  });
+  it("never overrides a status a person set", () => {
+    expect(statusAfterQualification("approved_to_pursue", "not_qualified")).toBeUndefined();
+    expect(statusAfterQualification("submitted", "qualified")).toBeUndefined();
   });
 });

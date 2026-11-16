@@ -3,7 +3,7 @@ import type { Prisma } from "@prisma/client";
 import { db } from "@/server/db";
 import { AI_RETRIES, chatModel } from "@/server/ai/provider";
 import { audit } from "./audit";
-import { applyGuardRails, qualificationSchema } from "./qualification-rules";
+import { applyGuardRails, qualificationSchema, statusAfterQualification } from "./qualification-rules";
 import { fetchSamDescription } from "./sources/sam-gov";
 
 const clip = (s: string | null | undefined, n: number) => (s ?? "").slice(0, n);
@@ -111,7 +111,7 @@ ${clip(description, 12000) || "No description available."}
       recommendation: result.recommendation,
       qualification: result as unknown as Prisma.InputJsonValue,
       qualifiedAt: now,
-      status: opp.status === "discovered" || opp.status === "under_review" ? (result.eligibility === "not_qualified" ? "under_review" : "qualified") : undefined,
+      status: statusAfterQualification(opp.status, result.eligibility),
     },
   });
   await audit({
