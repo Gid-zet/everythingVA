@@ -27,6 +27,8 @@ model User {
   emailRules      EmailRule[]
 
   chatbotInteraction ChatbotInteraction?
+
+  workspaceMemberships WorkspaceMember[]
 }
 
 enum Role {
@@ -598,4 +600,312 @@ enum RuleSystemType {
   RECEIPT
   NOTIFICATION
   COLD_EMAIL
+}
+
+// ─── Procurement (RFPs, supplier registrations) ─────────────────────────────
+// See docs/procurement/architecture.md.
+
+enum WorkspaceRole {
+  owner
+  admin
+  editor
+  viewer
+}
+
+/// A business using the procurement assistant (e.g. CCM) and its team.
+model ProcurementWorkspace {
+  id        String   @id @default(cuid())
+  name      String
+  createdAt DateTime @default(now())
+
+  members       WorkspaceMember[]
+  profile       CompanyProfile?
+  credentials   Credential[]
+  documents     KnowledgeDocument[]
+  opportunities Opportunity[]
+  tasks         ProcurementTask[]
+  discoveryRuns DiscoveryRun[]
+  auditLogs     AuditLog[]
+}
+
+model WorkspaceMember {
+  id          String        @id @default(cuid())
+  workspaceId String
+  userId      String
+  role        WorkspaceRole @default(editor)
+  createdAt   DateTime      @default(now())
+
+  workspace ProcurementWorkspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user      User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, userId])
+  @@index([userId])
+}
+
+/// What the business does and where; drives discovery and qualification.
+model CompanyProfile {
+  id                   String   @id @default(cuid())
+  workspaceId          String   @unique
+  legalName            String
+  website              String?
+  summary              String   @db.Text
+  services             String[]
+  keywords             String[]
+  excludedKeywords     String[]
+  naicsCodes           String[]
+  unspscCodes          String[]
+  /// e.g. "Woman-owned", "Small disadvantaged business"
+  businessTypes        String[]
+  /// ISO country codes the business can work in, e.g. US, CA
+  countries            String[]
+  serviceRegions       String[]
+  yearsInBusiness      Int?
+  governmentExperience String?  @db.Text
+  updatedAt            DateTime @updatedAt
+
+  workspace ProcurementWorkspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+}
+
+enum VerificationStatus {
+  unverified
+  verified
+  expired
+  rejected
+}
+
+enum CredentialKind {
+  certification
+  registration
+  insurance
+  contract_vehicle
+  license
+  other
+}
+
+/// A certification, registration or similar claim. Agents only treat
+/// verified, unexpired credentials as held.
+model Credential {
+  id          String             @id @default(cuid())
+  workspaceId String
+  name        String
+  kind        CredentialKind     @default(certification)
+  issuer      String?
+  identifier  String?
+  issuedAt    DateTime?
+  expiresAt   DateTime?
+  status      VerificationStatus @default(unverified)
+  verifiedBy  String?
+  verifiedAt  DateTime?
+  notes       String?            @db.Text
+  documentId  String?
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+
+  workspace ProcurementWorkspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  document  KnowledgeDocument?   @relation(fields: [documentId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId])
+}
+
+enum DocumentCategory {
+  capability_statement
+  certification
+  business_registration
+  tax_supplier
+  insurance
+  past_proposal
+  case_study
+  staff_bio
+  resume
+  project_reference
+  pricing
+  policy
+  template
+  past_performance
+  other
+}
+
+enum DocumentAccess {
+  all_members
+  admins_only
+}
+
+/// Knowledge-base document. Text is extracted on upload; uploading a new
+/// version creates a new row linked to the previous one.
+model KnowledgeDocument {
+  id                String             @id @default(cuid())
+  workspaceId       String
+  name              String
+  category          DocumentCategory   @default(other)
+  fileName          String?
+  mimeType          String?
+  sizeBytes         Int?
+  text              String             @db.Text
+  uploadedBy        String?
+  uploadedAt        DateTime           @default(now())
+  expiresAt         DateTime?
+  status            VerificationStatus @default(unverified)
+  verifiedBy        String?
+  verifiedAt        DateTime?
+  access            DocumentAccess     @default(all_members)
+  version           Int                @default(1)
+  isLatest          Boolean            @default(true)
+  previousVersionId String?            @unique
+
+  workspace       ProcurementWorkspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  previousVersion KnowledgeDocument?   @relation("DocumentVersions", fields: [previousVersionId], references: [id], onDelete: SetNull)
+  nextVersion     KnowledgeDocument?   @relation("DocumentVersions")
+  credentials     Credential[]
+
+  @@index([workspaceId, isLatest])
+}
+
+enum OpportunitySource {
+  sam_gov
+  canadabuys
+  manual
+}
+
+enum OpportunityStatus {
+  discovered
+  under_review
+  qualified
+  awaiting_decision
+  approved_to_pursue
+  proposal_in_progress
+  awaiting_information
+  awaiting_approval
+  ready_for_submission
+  submitted
+  under_evaluation
+  awarded
+  unsuccessful
+  withdrawn
+  declined
+}
+
+enum EligibilityStatus {
+  qualified
+  potentially_qualified
+  requires_clarification
+  not_qualified
+}
+
+enum BidRecommendation {
+  strongly_recommend
+  consider
+  do_not_pursue
+}
+
+model Opportunity {
+  id                  String             @id @default(cuid())
+  workspaceId         String
+  source              OpportunitySource
+  externalId          String
+  title               String
+  organization        String?
+  referenceNumber     String?
+  solicitationNumber  String?
+  noticeType          String?
+  sourceUrl           String
+  discoveredAt        DateTime           @default(now())
+  postedAt            DateTime?
+  deadline            DateTime?
+  estimatedValue      Float?
+  currency            String?
+  country             String?
+  placeOfPerformance  String?
+  setAside            String?
+  classificationCodes String[]
+  description         String?            @db.Text
+  descriptionUrl      String?
+  /// [{ name?, url }]
+  attachments         Json?
+  /// [{ name?, email?, phone? }]
+  contacts            Json?
+  amendmentNumber     String?
+  amendedAt           DateTime?
+  relevance           Int                @default(0)
+  matchedKeywords     String[]
+  status              OpportunityStatus  @default(discovered)
+  fitScore            Int?
+  eligibility         EligibilityStatus?
+  recommendation      BidRecommendation?
+  qualification       Json?
+  qualifiedAt         DateTime?
+  ownerId             String?
+  followUpAt          DateTime?
+  submittedAt         DateTime?
+  submissionReference String?
+  notes               String?            @db.Text
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+
+  workspace ProcurementWorkspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  tasks     ProcurementTask[]
+  auditLogs AuditLog[]
+
+  @@unique([workspaceId, source, externalId])
+  @@index([workspaceId, status])
+  @@index([workspaceId, deadline])
+}
+
+model ProcurementTask {
+  id            String    @id @default(cuid())
+  workspaceId   String
+  opportunityId String?
+  title         String
+  dueAt         DateTime?
+  done          Boolean   @default(false)
+  assigneeId    String?
+  createdBy     String?
+  createdAt     DateTime  @default(now())
+
+  workspace   ProcurementWorkspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  opportunity Opportunity?         @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, done])
+}
+
+model DiscoveryRun {
+  id          String            @id @default(cuid())
+  workspaceId String
+  source      OpportunitySource
+  /// "schedule" or "manual"
+  trigger     String
+  startedAt   DateTime          @default(now())
+  finishedAt  DateTime?
+  scanned     Int               @default(0)
+  created     Int               @default(0)
+  updated     Int               @default(0)
+  error       String?
+
+  workspace ProcurementWorkspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, startedAt])
+}
+
+enum AuditActor {
+  user
+  ai
+  system
+}
+
+/// Every action taken by a person, an agent or the scheduler.
+model AuditLog {
+  id            String     @id @default(cuid())
+  workspaceId   String
+  opportunityId String?
+  actor         AuditActor
+  userId        String?
+  action        String
+  summary       String
+  detail        Json?
+  createdAt     DateTime   @default(now())
+
+  workspace   ProcurementWorkspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  opportunity Opportunity?         @relation(fields: [opportunityId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, createdAt])
+  @@index([opportunityId])
 }
