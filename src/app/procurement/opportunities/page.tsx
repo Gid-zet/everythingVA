@@ -121,6 +121,7 @@ function OpportunitiesInner() {
         </select>
         <select className={`${inputClass} w-auto`} value={filters.eligibility} onChange={(e) => setParam("eligibility", e.target.value, "all")} aria-label="Eligibility">
           <option value="all">Any eligibility</option>
+          <option value="eligible">Qualified or potentially qualified</option>
           <option value="unscored">Not assessed yet</option>
           {Object.entries(ELIGIBILITY_LABELS).map(([k, v]) => (
             <option key={k} value={k}>

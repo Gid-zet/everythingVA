@@ -27,9 +27,14 @@ export default function ProcurementDashboard() {
 
   const s = data.stats;
   const canRun = data.hasProfile && data.workspace.role !== "viewer";
-  const cards = [
+  const cards: { label: string; value: number; href: string; note?: string }[] = [
     { label: "Opportunities found", value: s.total, href: "/procurement/opportunities?status=all" },
-    { label: "Qualified or potentially qualified", value: s.qualified, href: "/procurement/opportunities?eligibility=qualified" },
+    {
+      label: "Qualified or potentially qualified",
+      value: s.qualified,
+      href: "/procurement/opportunities?eligibility=eligible",
+      note: s.needsClarification ? `${s.needsClarification} more need clarification` : undefined,
+    },
     { label: "Awaiting review", value: s.awaitingReview, href: "/procurement/opportunities" },
     { label: "Being prepared", value: s.inProposal, href: "/procurement/opportunities?status=proposal_in_progress" },
     { label: "Submitted", value: s.submitted, href: "/procurement/opportunities?status=submitted" },
@@ -66,6 +71,7 @@ export default function ProcurementDashboard() {
           <Link key={c.label} href={c.href} className="group rounded-xl border bg-card p-4 transition-colors hover:border-foreground/20">
             <p className="text-xs text-muted-foreground">{c.label}</p>
             <p className="mt-1.5 text-2xl font-semibold tabular-nums">{c.value.toLocaleString()}</p>
+            {c.note && <p className="mt-0.5 text-[11px] text-amber-700 dark:text-amber-300">{c.note}</p>}
           </Link>
         ))}
       </div>

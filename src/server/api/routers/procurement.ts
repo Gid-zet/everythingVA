@@ -73,7 +73,11 @@ export const procurementRouter = createTRPCRouter({
       db.opportunity.count({ where: { workspaceId } }),
     ]);
     const count = (...s: string[]) => byStatus.filter((b) => s.includes(b.status)).reduce((n, b) => n + b._count, 0);
-    const qualified = await db.opportunity.count({ where: { workspaceId, eligibility: { in: ["qualified", "potentially_qualified"] } } });
+    // Counted by the agent's eligibility (not the pipeline status), active pipeline only.
+    const [qualified, needsClarification] = await Promise.all([
+      db.opportunity.count({ where: { workspaceId, status: { in: ACTIVE_STATUSES }, eligibility: { in: ["qualified", "potentially_qualified"] } } }),
+      db.opportunity.count({ where: { workspaceId, status: { in: ACTIVE_STATUSES }, eligibility: "requires_clarification" } }),
+    ]);
     return {
       workspace: { id: workspaceId, name: ctx.ws.workspaceName, role: ctx.ws.role },
       hasProfile: !!profile,
@@ -82,6 +86,7 @@ export const procurementRouter = createTRPCRouter({
       stats: {
         total,
         qualified,
+        needsClarification,
         awaitingReview: count("discovered", "under_review", "awaiting_decision"),
         inProposal: count("approved_to_pursue", "proposal_in_progress", "awaiting_information", "awaiting_approval", "ready_for_submission"),
         submitted: count("submitted", "under_evaluation"),
@@ -326,7 +331,9 @@ export const procurementRouter = createTRPCRouter({
     .input(
       z.object({
         status: z.union([statusEnum, z.literal("active"), z.literal("all")]).default("active"),
-        eligibility: z.enum(["qualified", "potentially_qualified", "requires_clarification", "not_qualified", "unscored", "all"]).default("all"),
+        eligibility: z
+          .enum(["eligible", "qualified", "potentially_qualified", "requires_clarification", "not_qualified", "unscored", "all"])
+          .default("all"),
         source: z.enum(["sam_gov", "canadabuys", "manual", "all"]).default("all"),
         search: z.string().max(200).optional(),
         sort: z.enum(["relevance", "deadline", "fit", "newest"]).default("relevance"),
@@ -338,6 +345,7 @@ export const procurementRouter = createTRPCRouter({
       if (input.status === "active") where.status = { in: ACTIVE_STATUSES };
       else if (input.status !== "all") where.status = input.status;
       if (input.eligibility === "unscored") where.eligibility = null;
+      else if (input.eligibility === "eligible") where.eligibility = { in: ["qualified", "potentially_qualified"] };
       else if (input.eligibility !== "all") where.eligibility = input.eligibility;
       if (input.source !== "all") where.source = input.source;
       if (input.search?.trim()) {

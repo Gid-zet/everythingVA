@@ -30,6 +30,20 @@ export const qualificationSchema = z.object({
 
 export type Qualification = z.infer<typeof qualificationSchema>;
 
+/** Pipeline statuses the agent may set; anything later is a human decision. */
+const AGENT_STATUSES = ["discovered", "under_review", "qualified"] as const;
+
+/**
+ * Pipeline status after an assessment. Only "Qualified" or "Potentially
+ * qualified" eligibility moves an opportunity to the Qualified status; anything
+ * else (needs clarification, not qualified) goes to Under review for a person.
+ * Statuses a person has moved it to are never changed.
+ */
+export function statusAfterQualification(current: string, eligibility: Qualification["eligibility"]) {
+  if (!(AGENT_STATUSES as readonly string[]).includes(current)) return undefined;
+  return eligibility === "qualified" || eligibility === "potentially_qualified" ? ("qualified" as const) : ("under_review" as const);
+}
+
 /**
  * Deterministic guard rails applied after the model answers, so a confident
  * model can't over-state eligibility:
