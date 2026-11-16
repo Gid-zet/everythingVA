@@ -13,8 +13,7 @@ import {
   Trash2,
   MailMinus,
   Star,
-  ShieldAlert,
-} from "lucide-react";
+  ShieldAlert, Landmark } from "lucide-react";
 
 import { useLocalStorage } from "usehooks-ts";
 import { api } from "@/trpc/react";
@@ -56,6 +55,7 @@ const SideBar = ({ isCollapsed }: Props) => {
           { title: "Organizer", icon: FolderKanban, active: tab === "organizer" },
           { title: "Unsubscribe", icon: MailMinus, active: tab === "unsubscribe" },
           { title: "Calendar", icon: CalendarDays, active: false, href: "/calendar" },
+          { title: "Procurement", icon: Landmark, active: false, href: "/procurement" },
           {
             title: "Accounts",
             tab: "accounts",

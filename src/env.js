@@ -39,6 +39,10 @@ export const env = createEnv({
     EMBEDDING_MODEL: z.string().min(1).optional(),
     EMBEDDING_API_KEY: z.string().min(1).optional(),
     EMBEDDING_BASE_URL: z.string().url().optional(),
+    // Procurement (see docs/procurement/architecture.md)
+    SAM_GOV_API_KEY: z.string().min(1).optional(),
+    SAM_GOV_MAX_REQUESTS: z.coerce.number().int().min(1).max(50).optional(),
+    CRON_SECRET: z.string().min(16).optional(),
   },
 
   /**
@@ -84,6 +88,9 @@ export const env = createEnv({
     EMBEDDING_MODEL: process.env.EMBEDDING_MODEL,
     EMBEDDING_API_KEY: process.env.EMBEDDING_API_KEY,
     EMBEDDING_BASE_URL: process.env.EMBEDDING_BASE_URL,
+    SAM_GOV_API_KEY: process.env.SAM_GOV_API_KEY,
+    SAM_GOV_MAX_REQUESTS: process.env.SAM_GOV_MAX_REQUESTS,
+    CRON_SECRET: process.env.CRON_SECRET,
     NEXT_PUBLIC_KINDE_CLIENT_ID: process.env.NEXT_PUBLIC_KINDE_CLIENT_ID,
     NEXT_PUBLIC_KINDE_ISSUER_URL: process.env.NEXT_PUBLIC_KINDE_ISSUER_URL,
     NEXT_PUBLIC_KINDE_SITE_URL: process.env.NEXT_PUBLIC_KINDE_SITE_URL,
