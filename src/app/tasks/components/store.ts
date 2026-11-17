@@ -22,6 +22,9 @@ export type TaskStore = {
   tasks: Task[];
   projects: Project[];
   loading: boolean;
+  /** When the list last synced, and whether it's syncing now (live badge). */
+  updatedAt: number;
+  refreshing: boolean;
   create: (input: CreateInput) => Promise<Task | undefined>;
   update: (input: UpdateInput) => void;
   move: (input: MoveInput) => void;
@@ -40,7 +43,9 @@ export const localToday = () => {
 
 export function useTrpcTaskStore(): TaskStore {
   const utils = api.useUtils();
-  const list = api.tasks.list.useQuery(undefined, { staleTime: 15_000, refetchOnWindowFocus: true });
+  // Live: refresh every 20 s while visible, so changes from other devices,
+  // the calendar or email show up without a reload.
+  const list = api.tasks.list.useQuery(undefined, { staleTime: 15_000, refetchOnWindowFocus: true, refetchInterval: 20_000, refetchIntervalInBackground: false });
   const onError = (e: { message: string }) => {
     toast.error(e.message);
     void utils.tasks.list.invalidate();
@@ -68,6 +73,8 @@ export function useTrpcTaskStore(): TaskStore {
     tasks: list.data?.tasks ?? [],
     projects: list.data?.projects ?? [],
     loading: list.isLoading,
+    updatedAt: list.dataUpdatedAt,
+    refreshing: list.isFetching,
     create: async (input) => {
       const temp = `temp-${Math.random().toString(36).slice(2)}`;
       const project = list.data?.projects.find((p) => p.id === input.projectId);

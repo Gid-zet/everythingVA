@@ -34,7 +34,7 @@ import { cn } from "@/lib/utils";
 import { SOURCE_LABELS } from "@/server/procurement/types";
 import { EligibilityBadge, EmptyState, formatDate, money, relativeDays } from "./bits";
 import { DiscoveryTrend, FitBar, FitHistogram, Meter, PipelineFunnel, SegmentedBar, type Segment } from "./dashboard-charts";
-import { CountUp, LiveBadge, useNewIds, useNow } from "./live";
+import { CountUp, LiveBadge, useNewIds, useNow } from "@/components/live";
 import { QuickActions, type QuickActionsState } from "./quick-actions";
 
 /* Layout follows the single-metric-first pattern (Stripe, Vercel): one hero

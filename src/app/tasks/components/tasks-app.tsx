@@ -3,8 +3,9 @@ import React from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
-import { CalendarDays, CalendarRange, CheckCircle2, Inbox, LayoutGrid, List, ListTodo, Loader2, Mail, Plus, Tag, Trophy, X } from "lucide-react";
+import { ArrowRight, CalendarClock, CalendarDays, CalendarRange, CheckCircle2, Flame, Hash, Inbox, LayoutGrid, List, ListTodo, Loader2, Mail, Plus, Tag, Trophy, X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { PageBanner, type BannerTone } from "@/components/page-banner";
 import { addDays } from "@/lib/tasks/recurrence";
 import { counts, inboxView, isOpen, labelView, projectView, todayView, upcomingView, compareTasks, type Group } from "@/lib/tasks/views";
 import { Board } from "./board";
@@ -151,39 +152,66 @@ function TasksAppInner({ store }: { store: TaskStore }) {
       <main className="min-w-0 flex-1">
         <MobileNav view={view} projects={store.projects} />
         <div className={cn("mx-auto px-4 py-6 sm:px-8 sm:py-8", layout === "board" && boardAllowed ? "max-w-none" : "max-w-3xl")}>
-          <header className="mb-5 flex items-end justify-between gap-3">
-            <div className="min-w-0">
-              <h1 className="flex items-center gap-2 truncate text-2xl font-semibold tracking-tight">
-                {view.kind === "project" && projectsById.get(view.id) && <ProjectDot color={projectsById.get(view.id)!.color} className="size-3" />}
-                {title}
-              </h1>
-              <p className="mt-0.5 text-sm text-muted-foreground">
-                {subtitle ? `${subtitle}${view.kind === "progress" ? "" : " · "}` : ""}
-                {view.kind !== "progress" && `${total} ${total === 1 ? "task" : "tasks"}`}
-                {view.kind === "today" && c.overdue > 0 && <span className="text-[var(--viz-critical)]"> · {c.overdue} overdue</span>}
-              </p>
-            </div>
-            {boardAllowed && (
-              <div className="flex rounded-lg border p-0.5" role="group" aria-label="Layout">
-                {(
-                  [
-                    ["list", List, "List"],
-                    ["board", LayoutGrid, "Board"],
-                  ] as const
-                ).map(([id, Icon, label]) => (
-                  <button
-                    key={id}
-                    onClick={() => setParam({ layout: id === "list" ? null : "board" })}
-                    aria-pressed={layout === id}
-                    className={cn("flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs", layout === id ? "bg-muted font-medium" : "text-muted-foreground hover:text-foreground")}
-                  >
-                    <Icon className="size-3.5" />
-                    {label}
-                  </button>
-                ))}
-              </div>
-            )}
-          </header>
+          <PageBanner
+            tone={VIEW_TONE[view.kind]}
+            icon={VIEW_ICON[view.kind]}
+            eyebrow="Tasks"
+            title={title}
+            description={subtitle}
+            live={store.updatedAt ? { updatedAt: store.updatedAt, refreshing: store.refreshing } : null}
+            stats={
+              view.kind === "progress"
+                ? undefined
+                : [
+                    { label: view.kind === "completed" ? "Completed" : "In view", value: total },
+                    { label: "Overdue", value: c.overdue },
+                    ...(productivity?.settings.enabled
+                      ? [
+                          { label: "Done today", value: `${productivity.today.done}/${productivity.today.goal}` },
+                          { label: "Streak", value: productivity.streak.current },
+                        ]
+                      : []),
+                  ]
+            }
+            actions={
+              boardAllowed ? (
+                <div className="flex rounded-xl bg-white/15 p-0.5 ring-1 ring-inset ring-white/25" role="group" aria-label="Layout">
+                  {(
+                    [
+                      ["list", List, "List"],
+                      ["board", LayoutGrid, "Board"],
+                    ] as const
+                  ).map(([id, Icon, label]) => (
+                    <button
+                      key={id}
+                      onClick={() => setParam({ layout: id === "list" ? null : "board" })}
+                      aria-pressed={layout === id}
+                      className={cn(
+                        "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium",
+                        layout === id ? "bg-white text-foreground shadow-sm" : "text-white/85 hover:text-white",
+                      )}
+                    >
+                      <Icon className="size-3.5" />
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              ) : undefined
+            }
+          />
+
+          {view.kind === "today" && (
+            <TodayActions
+              overdue={store.tasks.filter((t) => isOpen(t) && t.dueDate && t.dueDate < today)}
+              inbox={c.inbox}
+              upcoming={c.upcoming}
+              base={base}
+              onReschedule={(list) => {
+                for (const t of list) store.update({ id: t.id, dueDate: today, dueTime: t.dueTime, dueAt: t.dueTime ? new Date(`${today}T${t.dueTime}:00`) : null });
+                toast.success(`Moved ${list.length} overdue ${list.length === 1 ? "task" : "tasks"} to today`);
+              }}
+            />
+          )}
 
           {view.kind !== "completed" && view.kind !== "progress" && (
             <div className="mb-6">
@@ -241,6 +269,88 @@ function TasksAppInner({ store }: { store: TaskStore }) {
   );
 }
 
+const VIEW_TONE: Record<View["kind"], BannerTone> = {
+  today: "indigo",
+  inbox: "ocean",
+  upcoming: "violet",
+  all: "slate",
+  completed: "emerald",
+  progress: "sunset",
+  project: "ocean",
+  label: "rose",
+};
+const VIEW_ICON: Record<View["kind"], React.ElementType> = {
+  today: CalendarDays,
+  inbox: Inbox,
+  upcoming: CalendarRange,
+  all: ListTodo,
+  completed: CheckCircle2,
+  progress: Trophy,
+  project: Hash,
+  label: Tag,
+};
+
+/** One-click actions for the day (real changes, or straight to the work). */
+function TodayActions({
+  overdue,
+  inbox,
+  upcoming,
+  base,
+  onReschedule,
+}: {
+  overdue: Task[];
+  inbox: number;
+  upcoming: number;
+  base: string;
+  onReschedule: (tasks: Task[]) => void;
+}) {
+  const card =
+    "group flex items-center gap-3 rounded-2xl border bg-gradient-to-br to-transparent p-3 text-left transition-all hover:-translate-y-0.5 hover:shadow-md disabled:pointer-events-none disabled:opacity-50";
+  const chip = "flex size-8 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br text-white shadow-sm";
+  return (
+    <div className="mb-6 grid gap-2.5 sm:grid-cols-2">
+      <button type="button" className={cn(card, "from-rose-500/[0.08]")} disabled={!overdue.length} onClick={() => onReschedule(overdue)}>
+        <span className={cn(chip, "from-rose-500 to-pink-600")}>
+          <Flame className="size-4" />
+        </span>
+        <span className="min-w-0">
+          <span className="block text-[13px] font-semibold">{overdue.length ? `Move ${overdue.length} overdue to today` : "Nothing overdue"}</span>
+          <span className="block text-[11px] text-muted-foreground">Keeps their times</span>
+        </span>
+      </button>
+      <Link href={`${base}?view=inbox`} className={cn(card, "from-sky-500/[0.08]")}>
+        <span className={cn(chip, "from-sky-500 to-cyan-600")}>
+          <Inbox className="size-4" />
+        </span>
+        <span className="min-w-0">
+          <span className="block text-[13px] font-semibold">Triage inbox</span>
+          <span className="block text-[11px] text-muted-foreground">{inbox ? `${inbox} without a project` : "Inbox zero"}</span>
+        </span>
+      </Link>
+      <Link href={`${base}?view=upcoming`} className={cn(card, "from-violet-500/[0.08]")}>
+        <span className={cn(chip, "from-violet-500 to-fuchsia-600")}>
+          <CalendarClock className="size-4" />
+        </span>
+        <span className="min-w-0">
+          <span className="block text-[13px] font-semibold">Plan the week</span>
+          <span className="block text-[11px] text-muted-foreground">{upcoming} due in the next 14 days</span>
+        </span>
+      </Link>
+      <Link href="/mail" className={cn(card, "from-emerald-500/[0.08]")}>
+        <span className={cn(chip, "from-emerald-500 to-teal-600")}>
+          <Mail className="size-4" />
+        </span>
+        <span className="min-w-0">
+          <span className="flex items-center gap-1 text-[13px] font-semibold">
+            Tasks from email <ArrowRight className="size-3" />
+          </span>
+          <span className="block text-[11px] text-muted-foreground">Open a thread, then Add task</span>
+        </span>
+      </Link>
+    </div>
+  );
+}
+
 function Empty({ view }: { view: View }) {
   const copy = {
     today: ["Nothing due today", "Enjoy the clear day, or plan something with the box above."],
@@ -261,7 +371,24 @@ function Empty({ view }: { view: View }) {
   );
 }
 
-function NavLink({ href, active, icon, label, count, tone }: { href: string; active: boolean; icon: React.ReactNode; label: string; count?: number; tone?: "danger" }) {
+function NavLink({
+  href,
+  active,
+  icon,
+  label,
+  count,
+  tone,
+  chip,
+}: {
+  href: string;
+  active: boolean;
+  icon: React.ReactNode;
+  label: string;
+  count?: number;
+  tone?: "danger";
+  /** Gradient classes for a coloured icon chip. */
+  chip?: string;
+}) {
   return (
     <Link
       href={href}
@@ -270,7 +397,11 @@ function NavLink({ href, active, icon, label, count, tone }: { href: string; act
         active ? "bg-background font-medium text-foreground shadow-sm ring-1 ring-border" : "text-muted-foreground hover:bg-background/60 hover:text-foreground",
       )}
     >
-      {icon}
+      {chip ? (
+        <span className={cn("flex size-6 items-center justify-center rounded-md bg-gradient-to-br text-white shadow-sm [&_svg]:size-3.5", chip, !active && "opacity-85")}>{icon}</span>
+      ) : (
+        icon
+      )}
       <span className="min-w-0 flex-1 truncate">{label}</span>
       {!!count && <span className={cn("text-xs tabular-nums", tone === "danger" ? "text-[var(--viz-critical)]" : "text-muted-foreground")}>{count}</span>}
     </Link>
@@ -310,19 +441,20 @@ function Sidebar({
         </div>
         <ProgressCard data={productivity} href={viewHref({ kind: "progress" })} />
         <nav className="space-y-0.5 p-2.5">
-          <NavLink href={viewHref({ kind: "inbox" })} active={is("inbox")} icon={<Inbox className="size-4" />} label="Inbox" count={c.inbox} />
+          <NavLink href={viewHref({ kind: "inbox" })} active={is("inbox")} chip="from-sky-500 to-cyan-600" icon={<Inbox className="size-4" />} label="Inbox" count={c.inbox} />
           <NavLink
             href={viewHref({ kind: "today" })}
             active={is("today")}
+            chip="from-indigo-500 to-violet-600"
             icon={<CalendarDays className="size-4" />}
             label="Today"
             count={c.today}
             tone={c.overdue ? "danger" : undefined}
           />
-          <NavLink href={viewHref({ kind: "upcoming" })} active={is("upcoming")} icon={<CalendarRange className="size-4" />} label="Upcoming" count={c.upcoming} />
-          <NavLink href={viewHref({ kind: "all" })} active={is("all")} icon={<ListTodo className="size-4" />} label="All tasks" />
-          <NavLink href={viewHref({ kind: "completed" })} active={is("completed")} icon={<CheckCircle2 className="size-4" />} label="Completed" />
-          <NavLink href={viewHref({ kind: "progress" })} active={is("progress")} icon={<Trophy className="size-4" />} label="Progress" />
+          <NavLink href={viewHref({ kind: "upcoming" })} active={is("upcoming")} chip="from-violet-500 to-fuchsia-600" icon={<CalendarRange className="size-4" />} label="Upcoming" count={c.upcoming} />
+          <NavLink href={viewHref({ kind: "all" })} active={is("all")} chip="from-slate-500 to-slate-700" icon={<ListTodo className="size-4" />} label="All tasks" />
+          <NavLink href={viewHref({ kind: "completed" })} active={is("completed")} chip="from-emerald-500 to-teal-600" icon={<CheckCircle2 className="size-4" />} label="Completed" />
+          <NavLink href={viewHref({ kind: "progress" })} active={is("progress")} chip="from-orange-500 to-pink-600" icon={<Trophy className="size-4" />} label="Progress" />
         </nav>
 
         <div className="px-2.5 pb-2">

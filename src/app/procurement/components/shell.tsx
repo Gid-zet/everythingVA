@@ -7,12 +7,12 @@ import { cn } from "@/lib/utils";
 import { api } from "@/trpc/react";
 
 const NAV = [
-  { href: "/procurement", label: "Dashboard", icon: LayoutDashboard, exact: true },
-  { href: "/procurement/opportunities", label: "Opportunities", icon: Search },
-  { href: "/procurement/profile", label: "Company profile", icon: Building2 },
-  { href: "/procurement/knowledge", label: "Knowledge base", icon: BookOpen },
-  { href: "/procurement/activity", label: "Activity log", icon: Activity },
-  { href: "/procurement/settings", label: "Sources & team", icon: Settings },
+  { href: "/procurement", label: "Dashboard", icon: LayoutDashboard, exact: true, tone: "from-indigo-500 to-violet-600" },
+  { href: "/procurement/opportunities", label: "Opportunities", icon: Search, tone: "from-sky-500 to-cyan-600" },
+  { href: "/procurement/profile", label: "Company profile", icon: Building2, tone: "from-emerald-500 to-teal-600" },
+  { href: "/procurement/knowledge", label: "Knowledge base", icon: BookOpen, tone: "from-violet-500 to-fuchsia-600" },
+  { href: "/procurement/activity", label: "Activity log", icon: Activity, tone: "from-orange-500 to-pink-600" },
+  { href: "/procurement/settings", label: "Sources & team", icon: Settings, tone: "from-rose-500 to-orange-500" },
 ];
 
 export function ProcurementShell({ children }: { children: React.ReactNode }) {
@@ -23,7 +23,7 @@ export function ProcurementShell({ children }: { children: React.ReactNode }) {
 
   const nav = (
     <nav className="flex flex-col gap-0.5 p-3">
-      {NAV.map(({ href, label, icon: Icon, exact }) => {
+      {NAV.map(({ href, label, icon: Icon, exact, tone }) => {
         const active = exact ? pathname === href : pathname.startsWith(href);
         return (
           <Link
@@ -34,7 +34,9 @@ export function ProcurementShell({ children }: { children: React.ReactNode }) {
               active ? "bg-background font-medium text-foreground shadow-sm ring-1 ring-border" : "text-muted-foreground hover:bg-background/60 hover:text-foreground",
             )}
           >
-            <Icon className="size-4" />
+            <span className={cn("flex size-6 items-center justify-center rounded-md bg-gradient-to-br text-white shadow-sm transition-opacity", tone, !active && "opacity-80")}>
+              <Icon className="size-3.5" />
+            </span>
             {label}
           </Link>
         );
