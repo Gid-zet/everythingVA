@@ -535,7 +535,7 @@ export const mailRouter = createTRPCRouter({
       }),
     )
     .query(async ({ ctx, input }) => {
-      return await checkAccountAuthStatus(input.accountId);
+      return await checkAccountAuthStatus(input.accountId, ctx.auth.id);
     }),
   setUndone: protectedProcedure
     .input(

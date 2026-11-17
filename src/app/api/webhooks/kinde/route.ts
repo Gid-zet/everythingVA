@@ -32,10 +32,6 @@ export async function POST(req: Request) {
 
     // Get the token from the request
     const token = await req.text();
-    console.log(
-      "📝 Token received (first 50 chars):",
-      token.substring(0, 50) + "...",
-    );
 
     // Decode the token
     const decoded = jwt.decode(token, { complete: true });
@@ -49,7 +45,11 @@ export async function POST(req: Request) {
     // Verify the token
     const key = await client.getSigningKey(kid);
     const signingKey = key.getPublicKey();
-    const event = jwt.verify(token, signingKey) as KindeWebhookEvent;
+    // Pin the algorithm and issuer so only Kinde-signed RS256 tokens pass.
+    const event = jwt.verify(token, signingKey, {
+      algorithms: ["RS256"],
+      ...(process.env.KINDE_ISSUER_URL ? { issuer: process.env.KINDE_ISSUER_URL } : {}),
+    }) as KindeWebhookEvent;
 
     console.log("Webhook event received:", event.type);
 

@@ -9,7 +9,13 @@ import { Button } from "@/components/ui/button";
 import { Drawer, DrawerContent, DrawerDescription, DrawerHeader, DrawerTitle, DrawerTrigger } from "@/components/ui/drawer";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { api, type RouterOutputs } from "@/trpc/react";
-import { Composer } from "./composer";
+import dynamic from "next/dynamic";
+
+// Loaded on demand: the rich-text editor is the heaviest part of the mail app.
+const Composer = dynamic(() => import("./composer").then((m) => m.Composer), {
+  ssr: false,
+  loading: () => <div className="h-40 animate-pulse rounded-lg bg-muted/60" />,
+});
 
 type Draft = RouterOutputs["mail"]["listDrafts"][number];
 

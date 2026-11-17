@@ -5,7 +5,13 @@ import { api } from "@/trpc/react";
 import { Button } from "@/components/ui/button";
 import { useThread } from "../use-thread";
 import { useCurrentThread } from "../use-threads";
-import { Composer } from "./composer";
+import dynamic from "next/dynamic";
+
+// Loaded on demand: the rich-text editor is the heaviest part of the mail app.
+const Composer = dynamic(() => import("./composer").then((m) => m.Composer), {
+  ssr: false,
+  loading: () => <div className="h-40 animate-pulse rounded-lg bg-muted/60" />,
+});
 
 /**
  * Reply area under the open thread. It starts collapsed to a slim bar so the
