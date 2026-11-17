@@ -2,6 +2,7 @@
 import React from "react";
 import Link from "next/link";
 import {
+  Activity,
   AlertTriangle,
   ArrowDownRight,
   ArrowRight,
@@ -13,9 +14,19 @@ import {
   Loader2,
   Lock,
   Minus,
+  Gauge,
+  Target,
   RefreshCw,
+  Rocket,
   ShieldAlert,
   User,
+  Wallet,
+  Filter,
+  PieChart,
+  Medal,
+  Hourglass,
+  Bell,
+  Globe2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { RouterOutputs } from "@/trpc/react";
@@ -23,18 +34,43 @@ import { cn } from "@/lib/utils";
 import { SOURCE_LABELS } from "@/server/procurement/types";
 import { EligibilityBadge, EmptyState, formatDate, money, relativeDays } from "./bits";
 import { DiscoveryTrend, FitBar, FitHistogram, Meter, PipelineFunnel, SegmentedBar, type Segment } from "./dashboard-charts";
+import { CountUp, LiveBadge, useNewIds, useNow } from "./live";
+import { QuickActions, type QuickActionsState } from "./quick-actions";
 
 /* Layout follows the single-metric-first pattern (Stripe, Vercel): one hero
    number with its trend, a strip of supporting KPIs, then breakdowns and
    work queues. Every figure comes from stored data; nothing is estimated. */
 
-function Panel({ title, subtitle, action, children, className }: { title: string; subtitle?: React.ReactNode; action?: React.ReactNode; children: React.ReactNode; className?: string }) {
+function Panel({
+  title,
+  subtitle,
+  action,
+  children,
+  className,
+  icon: Icon,
+  tone = "from-sky-500 to-blue-600",
+}: {
+  title: string;
+  subtitle?: React.ReactNode;
+  action?: React.ReactNode;
+  children: React.ReactNode;
+  className?: string;
+  icon?: React.ElementType;
+  tone?: string;
+}) {
   return (
     <section className={cn("flex min-w-0 flex-col rounded-2xl border bg-card shadow-[0_1px_2px_rgba(0,0,0,0.03)]", className)}>
       <header className="flex items-start justify-between gap-3 px-5 pb-3 pt-4">
-        <div className="min-w-0">
-          <h2 className="text-[13px] font-semibold tracking-tight">{title}</h2>
-          {subtitle && <p className="mt-0.5 text-xs text-muted-foreground">{subtitle}</p>}
+        <div className="flex min-w-0 items-start gap-2.5">
+          {Icon && (
+            <span className={cn("mt-px flex size-7 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br text-white shadow-sm", tone)}>
+              <Icon className="size-3.5" />
+            </span>
+          )}
+          <div className="min-w-0">
+            <h2 className="text-[13px] font-semibold tracking-tight">{title}</h2>
+            {subtitle && <p className="mt-0.5 text-xs text-muted-foreground">{subtitle}</p>}
+          </div>
         </div>
         {action}
       </header>
@@ -62,20 +98,50 @@ function Delta({ current, previous, label }: { current: number; previous: number
   );
 }
 
-function StatTile({ label, value, foot, href, children }: { label: string; value: React.ReactNode; foot?: React.ReactNode; href?: string; children?: React.ReactNode }) {
+const TILE_TONES = {
+  emerald: { chip: "from-emerald-500 to-teal-600", wash: "from-emerald-500/[0.10]", bar: "bg-emerald-500" },
+  violet: { chip: "from-violet-500 to-fuchsia-600", wash: "from-violet-500/[0.10]", bar: "bg-violet-500" },
+  blue: { chip: "from-sky-500 to-blue-600", wash: "from-blue-500/[0.10]", bar: "bg-blue-500" },
+  amber: { chip: "from-amber-400 to-orange-500", wash: "from-amber-500/[0.12]", bar: "bg-amber-500" },
+} as const;
+
+function StatTile({
+  label,
+  value,
+  foot,
+  href,
+  children,
+  tone = "blue",
+  icon: Icon,
+}: {
+  label: string;
+  value: React.ReactNode;
+  foot?: React.ReactNode;
+  href?: string;
+  children?: React.ReactNode;
+  tone?: keyof typeof TILE_TONES;
+  icon?: React.ElementType;
+}) {
+  const t = TILE_TONES[tone];
   const body = (
     <>
+      <span className={cn("absolute inset-x-0 top-0 h-1", t.bar)} aria-hidden />
       <div className="flex items-start justify-between gap-2">
         <p className="text-xs text-muted-foreground">{label}</p>
+        {Icon && (
+          <span className={cn("flex size-8 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br text-white shadow-sm", t.chip)}>
+            <Icon className="size-4" />
+          </span>
+        )}
         {children}
       </div>
-      <p className="mt-2 text-[26px] font-semibold leading-none tracking-tight">{value}</p>
+      <p className="mt-1 text-[28px] font-semibold leading-none tracking-tight">{value}</p>
       {foot && <div className="mt-2 text-xs text-muted-foreground">{foot}</div>}
     </>
   );
-  const cls = "block rounded-2xl border bg-card p-4 shadow-[0_1px_2px_rgba(0,0,0,0.03)] transition-colors";
+  const cls = cn("relative block overflow-hidden rounded-2xl border bg-card bg-gradient-to-br to-transparent p-4 shadow-[0_1px_2px_rgba(0,0,0,0.03)] transition-all", t.wash);
   return href ? (
-    <Link href={href} className={cn(cls, "hover:border-foreground/20")}>
+    <Link href={href} className={cn(cls, "hover:-translate-y-0.5 hover:shadow-md")}>
       {body}
     </Link>
   ) : (
@@ -84,6 +150,19 @@ function StatTile({ label, value, foot, href, children }: { label: string; value
 }
 
 const ACTOR_ICON = { user: User, ai: Bot, system: Cog };
+const ACTOR_TONE = {
+  user: "from-emerald-500 to-teal-600",
+  ai: "from-violet-500 to-fuchsia-600",
+  system: "from-sky-500 to-blue-600",
+};
+
+function ago(d: Date | string, now: number) {
+  const s = Math.max(0, Math.round((now - new Date(d).getTime()) / 1000));
+  if (s < 60) return "just now";
+  if (s < 3600) return `${Math.floor(s / 60)}m ago`;
+  if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
+  return formatDate(d);
+}
 
 export type DashboardOverview = RouterOutputs["procurement"]["overview"];
 export type DashboardAnalytics = RouterOutputs["procurement"]["analytics"];
@@ -91,14 +170,19 @@ export type DashboardAnalytics = RouterOutputs["procurement"]["analytics"];
 export function DashboardView({
   o,
   a,
-  onFind,
-  finding,
+  actions,
+  live,
+  agentStatus,
 }: {
   o: DashboardOverview;
   a: DashboardAnalytics;
-  onFind: () => void;
-  finding: boolean;
+  actions: QuickActionsState;
+  live: { updatedAt: number; refreshing: boolean };
+  /** What an agent is doing right now, e.g. "Qualification agent 2/5". */
+  agentStatus?: string | null;
 }) {
+  const now = useNow(15_000);
+  const freshIds = useNewIds(a.activity.map((x) => x.id));
   const s = o.stats;
   const canRun = o.hasProfile && o.workspace.role !== "viewer";
   const lastRun = o.lastRuns[0];
@@ -124,34 +208,62 @@ export function DashboardView({
 
   return (
     <div className="space-y-5">
-      {/* Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div className="min-w-0">
-          <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">Procurement · {o.workspace.name}</p>
-          <h1 className="mt-1 text-2xl font-semibold tracking-tight sm:text-[28px]">Pipeline overview</h1>
-          <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
-            <span className="inline-flex items-center gap-1.5">
-              <span className={cn("size-1.5 rounded-full", lastRun && !lastRun.error ? "bg-[var(--viz-good)]" : "bg-[var(--viz-neutral)]")} aria-hidden />
-              {lastRun ? `Last searched ${formatDate(lastRun.startedAt, true)}` : "Not searched yet"}
-            </span>
-            <span>SAM.gov {o.sources.samGov ? "on" : "off"}</span>
-            <span>CanadaBuys on</span>
-            <span>Daily at 11:00 UTC</span>
-            {!o.aiConfigured && <span className="text-amber-700 dark:text-amber-300">AI not configured</span>}
+      {/* Live banner */}
+      <section className="relative overflow-hidden rounded-3xl p-6 text-white shadow-lg sm:p-7" style={{ background: "linear-gradient(120deg, #312e81 0%, #4f46e5 38%, #7c3aed 68%, #0ea5e9 100%)" }}>
+        <div className="pointer-events-none absolute -right-20 -top-24 size-72 rounded-full bg-fuchsia-400/30 blur-3xl" aria-hidden />
+        <div className="pointer-events-none absolute -bottom-28 left-1/3 size-72 rounded-full bg-sky-300/25 blur-3xl" aria-hidden />
+        <div className="pointer-events-none absolute inset-0 opacity-[0.07] [background-image:radial-gradient(white_1px,transparent_1px)] [background-size:18px_18px]" aria-hidden />
+        <div className="relative flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <LiveBadge updatedAt={live.updatedAt} refreshing={live.refreshing} />
+              {agentStatus && (
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-white/15 px-2.5 py-1 text-[11px] font-medium ring-1 ring-inset ring-white/25">
+                  <Loader2 className="size-3 animate-spin" />
+                  {agentStatus}
+                </span>
+              )}
+            </div>
+            <p className="mt-4 text-[11px] font-medium uppercase tracking-[0.16em] text-white/70">Procurement · {o.workspace.name}</p>
+            <h1 className="mt-1 text-3xl font-semibold tracking-tight sm:text-4xl">Pipeline overview</h1>
+            <div className="mt-3 flex flex-wrap gap-2 text-[11px]">
+              {[
+                { on: !!lastRun && !lastRun.error, label: lastRun ? `Last search ${formatDate(lastRun.startedAt, true)}` : "Not searched yet" },
+                { on: o.sources.samGov, label: `SAM.gov ${o.sources.samGov ? "on" : "off"}` },
+                { on: true, label: "CanadaBuys on" },
+                { on: true, label: "Daily search 11:00 UTC" },
+                { on: o.aiConfigured, label: o.aiConfigured ? "AI agent ready" : "AI not configured" },
+              ].map((c) => (
+                <span key={c.label} className="inline-flex items-center gap-1.5 rounded-full bg-black/15 px-2.5 py-1 ring-1 ring-inset ring-white/15">
+                  <span className={cn("size-1.5 rounded-full", c.on ? "bg-emerald-300" : "bg-amber-300")} aria-hidden />
+                  {c.label}
+                </span>
+              ))}
+            </div>
+          </div>
+          <div className="flex shrink-0 flex-wrap items-end gap-6">
+            <div>
+              <p className="text-xs text-white/70">Active opportunities</p>
+              <p className="text-5xl font-semibold leading-none tracking-tight">
+                <CountUp value={activeTotal} />
+              </p>
+            </div>
+            <div className="flex gap-2">
+              <Button asChild variant="secondary" className="bg-white/15 text-white ring-1 ring-inset ring-white/25 hover:bg-white/25">
+                <Link href="/procurement/opportunities">
+                  Opportunities <ArrowRight className="ml-1.5 size-4" />
+                </Link>
+              </Button>
+              <Button onClick={actions.find.run} disabled={!canRun || actions.find.running} className="bg-white text-indigo-700 hover:bg-white/90">
+                {actions.find.running ? <Loader2 className="mr-2 size-4 animate-spin" /> : <RefreshCw className="mr-2 size-4" />}
+                {actions.find.running ? "Searching…" : "Find now"}
+              </Button>
+            </div>
           </div>
         </div>
-        <div className="flex gap-2">
-          <Button variant="outline" asChild>
-            <Link href="/procurement/opportunities">
-              Opportunities <ArrowRight className="ml-1.5 size-4" />
-            </Link>
-          </Button>
-          <Button onClick={() => onFind()} disabled={!canRun || finding}>
-            {finding ? <Loader2 className="mr-2 size-4 animate-spin" /> : <RefreshCw className="mr-2 size-4" />}
-            {finding ? "Searching…" : "Find now"}
-          </Button>
-        </div>
-      </div>
+      </section>
+
+      <QuickActions s={actions} />
 
       {!o.hasProfile && (
         <div className="flex flex-col gap-3 rounded-2xl border border-brand/30 bg-brand-soft p-5 sm:flex-row sm:items-center sm:justify-between">
@@ -169,20 +281,30 @@ export function DashboardView({
       <div className="grid gap-5 lg:grid-cols-12">
         <section className="relative overflow-hidden rounded-2xl border bg-card p-5 shadow-[0_1px_2px_rgba(0,0,0,0.03)] lg:col-span-8">
           <div
-            className="pointer-events-none absolute inset-x-0 top-0 h-32 opacity-60 [background:radial-gradient(60%_100%_at_20%_0%,hsl(var(--brand)/0.10),transparent)]"
+            className="pointer-events-none absolute inset-x-0 top-0 h-40 opacity-90 [background:radial-gradient(55%_100%_at_15%_0%,rgba(59,130,246,0.14),transparent),radial-gradient(45%_90%_at_85%_0%,rgba(168,85,247,0.12),transparent)]"
             aria-hidden
           />
           <div className="relative flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
             <div>
-              <p className="text-xs text-muted-foreground">Active opportunities</p>
-              <p className="mt-1 text-5xl font-semibold leading-none tracking-tight">{activeTotal.toLocaleString()}</p>
+              <p className="flex items-center gap-2 text-xs text-muted-foreground">
+                <span className="flex size-6 items-center justify-center rounded-lg bg-gradient-to-br from-sky-500 to-blue-600 text-white">
+                  <Activity className="size-3.5" />
+                </span>
+                New opportunities, last 7 days
+              </p>
+              <p className="mt-2 text-5xl font-semibold leading-none tracking-tight">
+                <CountUp value={a.week.current} />
+              </p>
               <div className="mt-3">
-                <Delta current={a.week.current} previous={a.week.previous} label={`new in the last 7 days (${a.week.current}) vs the 7 before`} />
+                <Delta current={a.week.current} previous={a.week.previous} label="vs the 7 days before" />
               </div>
             </div>
             <div className="text-right text-xs text-muted-foreground">
               <p>
-                <span className="font-medium text-foreground tabular-nums">{s.total.toLocaleString()}</span> found in total
+                <span className="font-medium text-foreground">
+                  <CountUp value={s.total} />
+                </span>{" "}
+                found in total
               </p>
               <p className="mt-0.5">Discovered per day, last 30 days</p>
             </div>
@@ -196,7 +318,16 @@ export function DashboardView({
           title="Bid readiness"
           subtitle="How ready your verified profile is for agents and applications"
           className="lg:col-span-4"
-          action={<span className="text-2xl font-semibold leading-none tracking-tight">{readinessScore}%</span>}
+          icon={Gauge}
+          tone="from-emerald-500 to-teal-600"
+          action={
+            <span
+              className="bg-clip-text text-2xl font-semibold leading-none tracking-tight text-transparent"
+              style={{ backgroundImage: "linear-gradient(90deg, #059669, #0ea5e9)" }}
+            >
+              <CountUp value={readinessScore} />%
+            </span>
+          }
         >
           <div className="space-y-4">
             <Meter label="Company profile" value={r.profile.filled} total={r.profile.total} detail="Fields discovery and qualification rely on" />
@@ -217,21 +348,34 @@ export function DashboardView({
       {/* KPI strip */}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatTile
+          tone="emerald"
+          icon={Target}
           label="Qualified or potentially qualified"
-          value={s.qualified.toLocaleString()}
+          value={<CountUp value={s.qualified} />}
           href="/procurement/opportunities?eligibility=eligible"
           foot={s.needsClarification ? <span className="text-amber-700 dark:text-amber-300">{s.needsClarification} more need clarification</span> : "Ready for a bid decision"}
         />
         <StatTile
+          tone="violet"
+          icon={Gauge}
           label="Average fit score"
-          value={a.fit.average ?? "–"}
+          value={a.fit.average !== null ? <CountUp value={a.fit.average} /> : "–"}
           foot={`${a.fit.assessed} of ${activeTotal} active assessed`}
           href="/procurement/opportunities?sort=fit"
         />
-        <StatTile label="In pursuit" value={pursuing.toLocaleString()} foot={`${s.submitted} submitted · ${s.awarded} awarded`} href="/procurement/opportunities?status=proposal_in_progress" />
         <StatTile
+          tone="blue"
+          icon={Rocket}
+          label="In pursuit"
+          value={<CountUp value={pursuing} />}
+          foot={`${s.submitted} submitted · ${s.awarded} awarded`}
+          href="/procurement/opportunities?status=proposal_in_progress"
+        />
+        <StatTile
+          tone="amber"
+          icon={Wallet}
           label="Pipeline value"
-          value={s.pipelineValueCount ? money(s.pipelineValue) : "–"}
+          value={s.pipelineValueCount ? <CountUp value={s.pipelineValue} format={(n) => money(n)} /> : "–"}
           foot={
             a.winRate
               ? `Win rate ${Math.round((a.winRate.awarded / a.winRate.decided) * 100)}% (${a.winRate.awarded}/${a.winRate.decided})`
@@ -244,7 +388,7 @@ export function DashboardView({
 
       {/* Funnel + fit */}
       <div className="grid gap-5 lg:grid-cols-12">
-        <Panel title="Pipeline funnel" subtitle="Where every opportunity stands, in order" className="lg:col-span-7">
+        <Panel title="Pipeline funnel" subtitle="Where every opportunity stands, in order" className="lg:col-span-7" icon={Filter} tone="from-sky-500 to-blue-600">
           <PipelineFunnel stages={a.funnel.stages} />
           <dl className="mt-5 grid grid-cols-3 gap-3 border-t pt-4">
             {[
@@ -273,7 +417,13 @@ export function DashboardView({
             </p>
           )}
         </Panel>
-        <Panel title="Fit and eligibility" subtitle={`Qualification agent results across ${activeTotal} active opportunities`} className="lg:col-span-5">
+        <Panel
+          title="Fit and eligibility"
+          subtitle={`Qualification agent results across ${activeTotal} active opportunities`}
+          className="lg:col-span-5"
+          icon={PieChart}
+          tone="from-violet-500 to-fuchsia-600"
+        >
           <SegmentedBar segments={eligibilitySegments} />
           <div className="mt-5 border-t pt-4">
             <p className="mb-1 text-xs font-medium">Fit score distribution</p>
@@ -288,6 +438,8 @@ export function DashboardView({
           title="Best matches"
           subtitle="Highest fit, still open"
           className="lg:col-span-7"
+          icon={Medal}
+          tone="from-amber-400 to-orange-500"
           action={
             <Link href="/procurement/opportunities?sort=fit" className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
               All <ArrowRight className="size-3" />
@@ -339,7 +491,7 @@ export function DashboardView({
           )}
         </Panel>
 
-        <Panel title="Closing in the next 14 days" subtitle="Active opportunities only" className="lg:col-span-5">
+        <Panel title="Closing in the next 14 days" subtitle="Active opportunities only" className="lg:col-span-5" icon={Hourglass} tone="from-rose-500 to-pink-600">
           {o.upcoming.length ? (
             <ul className="-my-1 space-y-1">
               {o.upcoming.map((u) => {
@@ -384,8 +536,10 @@ export function DashboardView({
       <div className="grid gap-5 lg:grid-cols-12">
         <Panel
           title="Live activity"
-          subtitle="People, agents and the scheduler"
+          subtitle="People, agents and the scheduler · refreshes every 20 seconds"
           className="lg:col-span-7"
+          icon={Activity}
+          tone="from-violet-500 to-indigo-600"
           action={
             <Link href="/procurement/activity" className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
               Full log <ArrowRight className="size-3" />
@@ -397,14 +551,23 @@ export function DashboardView({
               {a.activity.map((l) => {
                 const I = l.action === "opportunity.approval" ? Lock : ACTOR_ICON[l.actor];
                 return (
-                  <li key={l.id} className="relative flex gap-3 text-sm">
-                    <span className="relative z-[1] flex size-7 shrink-0 items-center justify-center rounded-full border bg-card">
-                      <I className="size-3.5 text-muted-foreground" />
+                  <li
+                    key={l.id}
+                    className={cn(
+                      "relative -mx-2 flex gap-3 rounded-xl px-2 py-1 text-sm transition-colors duration-1000",
+                      freshIds.has(l.id) && "animate-in fade-in slide-in-from-top-2 bg-violet-500/10",
+                    )}
+                  >
+                    <span className={cn("relative z-[1] flex size-7 shrink-0 items-center justify-center rounded-full bg-gradient-to-br text-white shadow-sm", ACTOR_TONE[l.actor])}>
+                      <I className="size-3.5" />
                     </span>
                     <div className="min-w-0 pt-0.5">
-                      <p className="line-clamp-2">{l.summary}</p>
+                      <p className="line-clamp-2">
+                        {freshIds.has(l.id) && <span className="mr-1.5 rounded bg-violet-600 px-1 py-px text-[10px] font-semibold uppercase text-white">New</span>}
+                        {l.summary}
+                      </p>
                       <p className="mt-0.5 truncate text-[11px] text-muted-foreground">
-                        {l.actor === "ai" ? "AI agent" : l.actor === "system" ? "Scheduler" : "Team member"} · {formatDate(l.createdAt, true)}
+                        {l.actor === "ai" ? "AI agent" : l.actor === "system" ? "Scheduler" : "Team member"} · <span title={formatDate(l.createdAt, true)}>{ago(l.createdAt, now)}</span>
                         {l.opportunity && (
                           <>
                             {" · "}
@@ -425,7 +588,7 @@ export function DashboardView({
         </Panel>
 
         <div className="space-y-5 lg:col-span-5">
-          <Panel title="Needs attention">
+          <Panel title="Needs attention" icon={Bell} tone="from-amber-400 to-orange-500">
             {o.alerts.length ? (
               <ul className="space-y-2.5">
                 {o.alerts.slice(0, 6).map((al, i) => {
@@ -459,6 +622,8 @@ export function DashboardView({
           <Panel
             title="Sources"
             subtitle="Where opportunities were found"
+            icon={Globe2}
+            tone="from-cyan-500 to-sky-600"
             action={
               <Link href="/procurement/settings" className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
                 Settings <ArrowRight className="size-3" />
