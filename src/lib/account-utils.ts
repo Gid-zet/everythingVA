@@ -3,32 +3,22 @@ import { db } from "@/server/db";
 /**
  * Check if an account needs re-authentication
  */
-export async function checkAccountAuthStatus(accountId: string): Promise<{
+export async function checkAccountAuthStatus(
+  accountId: string,
+  userId: string,
+): Promise<{
   needsReauth: boolean;
-  account?: any;
+  account?: { id: string; emailAddress: string; name: string; provider: string };
 }> {
   try {
-    const account = await db.account.findUnique({
-      where: { id: accountId },
-      select: {
-        id: true,
-        token: true,
-        emailAddress: true,
-        name: true,
-        provider: true,
-      },
+    // Scoped to the caller, and the token itself never leaves the server.
+    const account = await db.account.findFirst({
+      where: { id: accountId, userId },
+      select: { id: true, token: true, emailAddress: true, name: true, provider: true, status: true },
     });
-
-    if (!account) {
-      return { needsReauth: true };
-    }
-
-    // Check if token is empty or null
-    if (!account.token || account.token.trim() === "") {
-      return { needsReauth: true, account };
-    }
-
-    return { needsReauth: false, account };
+    if (!account) return { needsReauth: true };
+    const { token, status, ...safe } = account;
+    return { needsReauth: !token?.trim() || status === "needs_reauth", account: safe };
   } catch (error) {
     console.error("Error checking account auth status:", error);
     return { needsReauth: true };

@@ -23,6 +23,16 @@ export const POST = async (req: NextRequest) => {
     return new Response("Bad Request", { status: 400 });
   }
 
+  // Reject stale requests so a captured, validly signed webhook can't be
+  // replayed later. Aurinko sends Unix seconds; accept milliseconds too.
+  const ts = Number(timestamp);
+  if (Number.isFinite(ts)) {
+    const ms = ts > 1e12 ? ts : ts * 1000;
+    if (Math.abs(Date.now() - ms) > 10 * 60 * 1000) {
+      return new Response("Stale request", { status: 401 });
+    }
+  }
+
   const basestring = `v0:${timestamp}:${body}`;
   const expectedSignature = crypto
     .createHmac("sha256", AURINKO_SIGNING_SECRET!)

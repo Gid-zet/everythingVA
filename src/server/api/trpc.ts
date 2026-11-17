@@ -25,6 +25,14 @@ import { getKindeUserForAPI } from "@/lib/kinde";
  *
  * @see https://trpc.io/docs/server/context
  */
+const ensuredAt = new Map<string, number>();
+function recentlyEnsured(userId: string) {
+  const t = ensuredAt.get(userId);
+  if (t && Date.now() - t < 10 * 60 * 1000) return true;
+  if (ensuredAt.size > 5000) ensuredAt.clear();
+  return false;
+}
+
 export const createTRPCContext = async (opts: { headers: Headers }) => {
   try {
     const user = await getKindeUserForAPI();
@@ -32,8 +40,10 @@ export const createTRPCContext = async (opts: { headers: Headers }) => {
       console.log("tRPC context user:", user ? { id: user.id, email: user.email } : "null");
     }
 
-    // If user exists, ensure they're in our database
-    if (user?.id && user?.email) {
+    // Make sure the signed-in user has a row, but not on every request: each
+    // tRPC call used to run an upsert. Once per user per 10 minutes per
+    // server instance is enough to pick up profile changes.
+    if (user?.id && user?.email && !recentlyEnsured(user.id)) {
       try {
         await db.user.upsert({
           where: { emailAddress: user.email },
@@ -55,7 +65,7 @@ export const createTRPCContext = async (opts: { headers: Headers }) => {
             imageUrl: user.picture || "",
           },
         });
-        console.log(`User ${user.id} ensured in database`);
+        ensuredAt.set(user.id, Date.now());
       } catch (dbError) {
         console.error("Error ensuring user in database:", dbError);
         // Don't fail the request if database operation fails

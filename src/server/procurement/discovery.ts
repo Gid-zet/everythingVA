@@ -8,6 +8,9 @@ import { fetchCanadaBuysOpenTenders } from "./sources/canadabuys";
 import { fetchSamOpportunities } from "./sources/sam-gov";
 import type { DiscoverySource, NormalizedOpportunity } from "./types";
 
+/** Minimum time between manual runs of the same source. */
+const MANUAL_COOLDOWN_MS = 15 * 60 * 1000;
+
 export const samConfigured = () => !!process.env.SAM_GOV_API_KEY;
 
 export function availableSources(): DiscoverySource[] {
@@ -39,6 +42,26 @@ export async function runDiscovery(
   const results: DiscoveryResult[] = [];
 
   for (const source of sources) {
+    // Cooldown for manual runs: repeated clicks would burn the SAM.gov daily
+    // quota (10 requests without a role) and re-download the CanadaBuys feed.
+    if (trigger === "manual") {
+      const recent = await db.discoveryRun.findFirst({
+        where: { workspaceId, source, startedAt: { gt: new Date(Date.now() - MANUAL_COOLDOWN_MS) } },
+        orderBy: { startedAt: "desc" },
+      });
+      if (recent) {
+        const wait = Math.ceil((recent.startedAt.getTime() + MANUAL_COOLDOWN_MS - Date.now()) / 60000);
+        results.push({
+          source,
+          scanned: 0,
+          relevant: 0,
+          created: 0,
+          updated: 0,
+          error: `${source === "sam_gov" ? "SAM.gov" : "CanadaBuys"} was searched a few minutes ago. Try again in ${wait} minute${wait === 1 ? "" : "s"}.`,
+        });
+        continue;
+      }
+    }
     const run = await db.discoveryRun.create({ data: { workspaceId, source, trigger } });
     const result: DiscoveryResult = { source, scanned: 0, relevant: 0, created: 0, updated: 0 };
     try {

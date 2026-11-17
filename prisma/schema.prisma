@@ -168,6 +168,8 @@ model Thread {
   @@index([accountId, trashedAt])
   @@index([accountId, starred])
   @@index([accountId, snoozedUntil])
+  // Folder lists filter by account and sort by newest message.
+  @@index([accountId, lastMessageDate(sort: Desc)])
 }
 
 model Email {
@@ -220,7 +222,7 @@ model Email {
   // User notes
   notes String?
 
-  @@index([threadId])
+  @@index([threadId, sentAt])
   @@index([fromId])
   @@index([emailLabel])
   @@index([sentAt])
