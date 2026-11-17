@@ -29,6 +29,9 @@ model User {
   chatbotInteraction ChatbotInteraction?
 
   workspaceMemberships WorkspaceMember[]
+
+  tasks        Task[]
+  taskProjects TaskProject[]
 }
 
 enum Role {
@@ -170,6 +173,8 @@ model Thread {
   @@index([accountId, snoozedUntil])
   // Folder lists filter by account and sort by newest message.
   @@index([accountId, lastMessageDate(sort: Desc)])
+
+  tasks Task[]
 }
 
 model Email {
@@ -910,4 +915,94 @@ model AuditLog {
 
   @@index([workspaceId, createdAt])
   @@index([opportunityId])
+}
+
+// ─── Tasks ──────────────────────────────────────────────────────────────────
+// Personal task manager. Statuses and priorities follow Linear/Plane; dates
+// are calendar dates in the user's own time zone (Todoist-style), with an
+// optional time and exact instant. See docs/tasks.md.
+
+enum TaskStatus {
+  backlog
+  todo
+  in_progress
+  done
+  canceled
+}
+
+enum TaskPriority {
+  none
+  low
+  medium
+  high
+  urgent
+}
+
+model TaskProject {
+  id        String   @id @default(cuid())
+  userId    String
+  name      String
+  color     String   @default("blue")
+  archived  Boolean  @default(false)
+  sortOrder Float    @default(65535)
+  createdAt DateTime @default(now())
+
+  user  User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tasks Task[]
+
+  @@unique([userId, name])
+}
+
+model Task {
+  id              String       @id @default(cuid())
+  userId          String
+  /// Per-user sequence shown as T-12.
+  number          Int
+  title           String
+  description     String?      @db.Text
+  status          TaskStatus   @default(todo)
+  priority        TaskPriority @default(none)
+  projectId       String?
+  labels          String[]
+  parentId        String?
+  /// Calendar date in the user's time zone, YYYY-MM-DD.
+  dueDate         String?
+  /// Local time HH:MM when the task is due at a specific time.
+  dueTime         String?
+  /// Exact instant for timed tasks (sorting, reminders).
+  dueAt           DateTime?
+  estimateMinutes Int?
+  /// Repeat rule, e.g. "FREQ=WEEKLY;INTERVAL=1;BYDAY=FR" (subset of RRULE).
+  recurrence      String?
+  sortOrder       Float        @default(65535)
+  completedAt     DateTime?
+  threadId        String?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  user     User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project  TaskProject?   @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  parent   Task?          @relation("Subtasks", fields: [parentId], references: [id], onDelete: Cascade)
+  subtasks Task[]         @relation("Subtasks")
+  thread   Thread?        @relation(fields: [threadId], references: [id], onDelete: SetNull)
+  activity TaskActivity[]
+
+  @@unique([userId, number])
+  @@index([userId, status])
+  @@index([userId, dueDate])
+  @@index([projectId])
+  @@index([parentId])
+  @@index([threadId])
+}
+
+model TaskActivity {
+  id        String   @id @default(cuid())
+  taskId    String
+  action    String
+  summary   String
+  createdAt DateTime @default(now())
+
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@index([taskId, createdAt])
 }
