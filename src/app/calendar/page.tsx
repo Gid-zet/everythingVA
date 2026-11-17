@@ -52,6 +52,7 @@ import {
 import { EventEditorDialog, type EventPreset, type RangeEvent } from "./components/event-editor";
 import { EventDetails } from "./components/event-details";
 import { MiniMonth } from "./components/mini-month";
+import { DayTasks } from "./components/day-tasks";
 
 const VIEWS: { value: CalendarView; label: string; key: string }[] = [
   { value: "day", label: "Day", key: "D" },
@@ -76,6 +77,19 @@ export default function CalendarPage() {
   const [date, setDate] = React.useState(() => new Date());
   const [sidebarOpen, setSidebarOpen] = React.useState(false);
   const [selectedKey, setSelectedKey] = React.useState<string | null>(null);
+
+  // Deep link from a task: /calendar?date=YYYY-MM-DD&event=<id>
+  React.useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const d = params.get("date");
+    if (d && /^\d{4}-\d{2}-\d{2}$/.test(d)) {
+      setDate(new Date(`${d}T00:00:00`));
+      setView("day");
+    }
+    const ev = params.get("event");
+    if (ev) setSelectedKey(ev);
+    if (d || ev) window.history.replaceState(null, "", window.location.pathname);
+  }, []);
   const [editor, setEditor] = React.useState<{ open: boolean; event?: RangeEvent | null; preset?: EventPreset }>({ open: false });
   const [query, setQuery] = React.useState("");
   const [debounced, setDebounced] = React.useState("");
@@ -304,6 +318,8 @@ export default function CalendarPage() {
       ) : (
         <>
           <MiniMonth selected={date} onSelect={setDate} eventDays={eventDays} />
+
+          <DayTasks date={date} />
 
           <div className="space-y-4">
             {accounts.map((a) => (

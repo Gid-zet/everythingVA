@@ -4,6 +4,7 @@ import { Provider } from "jotai";
 import { ThemeProvider } from "@/components/theme-provicer";
 import { TRPCReactProvider } from "@/trpc/react";
 import { Toaster } from "sonner";
+import { TaskRewards } from "@/components/task-rewards";
 
 interface ProvidersProps {
   children: React.ReactNode;
@@ -18,7 +19,10 @@ export function Providers({ children }: ProvidersProps) {
         enableSystem
         disableTransitionOnChange
       >
-        <TRPCReactProvider>{children}</TRPCReactProvider>
+        <TRPCReactProvider>
+          {children}
+          <TaskRewards />
+        </TRPCReactProvider>
         <Toaster />
       </ThemeProvider>
     </Provider>

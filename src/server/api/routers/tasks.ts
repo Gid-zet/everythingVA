@@ -4,6 +4,7 @@ import { Prisma, type PrismaClient } from "@prisma/client";
 import { createTRPCRouter, protectedProcedure } from "@/server/api/trpc";
 import { AI_RETRIES, chatModel, isAiConfigured } from "@/server/ai/provider";
 import { addDays, describeRule, nextDateAfter, parseRule, toDate } from "@/lib/tasks/recurrence";
+import { productivity, recordCompletion, undoCompletion, type Reward } from "@/server/tasks/rewards";
 
 const status = z.enum(["backlog", "todo", "in_progress", "done", "canceled"]);
 const priority = z.enum(["none", "low", "medium", "high", "urgent"]);
@@ -30,9 +31,14 @@ const taskSelect = {
   sortOrder: true,
   completedAt: true,
   threadId: true,
+  eventId: true,
+  eventCalendarId: true,
+  eventStart: true,
+  opportunityId: true,
   createdAt: true,
   updatedAt: true,
   thread: { select: { id: true, subject: true, accountId: true } },
+  opportunity: { select: { id: true, title: true } },
   _count: { select: { subtasks: true } },
 } satisfies Prisma.TaskSelect;
 
@@ -139,11 +145,22 @@ export const tasksRouter = createTRPCRouter({
         estimateMinutes: z.number().int().min(1).max(10_000).nullish(),
         recurrence: z.string().max(100).nullish(),
         threadId: z.string().optional(),
+        eventId: z.string().max(500).optional(),
+        eventCalendarId: z.string().max(200).optional(),
+        eventStart: z.coerce.date().optional(),
+        opportunityId: z.string().optional(),
       }),
     )
     .mutation(async ({ ctx, input }) => {
       const userId = ctx.auth.id;
       const { projectName, ...data } = input;
+      if (data.opportunityId) {
+        const opp = await ctx.db.opportunity.findFirst({
+          where: { id: data.opportunityId, workspace: { members: { some: { userId } } } },
+          select: { id: true },
+        });
+        if (!opp) throw new TRPCError({ code: "NOT_FOUND", message: "Opportunity not found" });
+      }
       if (data.parentId) {
         const parent = await owned(ctx.db, userId, data.parentId);
         data.projectId ??= parent.projectId;
@@ -173,7 +190,18 @@ export const tasksRouter = createTRPCRouter({
             },
             select: taskSelect,
           });
-          await log(ctx.db, task.id, "created", data.threadId ? "Created from an email" : "Created");
+          await log(
+            ctx.db,
+            task.id,
+            "created",
+            data.opportunityId
+              ? "Created from a procurement opportunity"
+              : data.eventId
+                ? "Created from a calendar event"
+                : data.threadId
+                  ? "Created from an email"
+                  : "Created",
+          );
           return task;
         } catch (e) {
           if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002" && attempt < 2) continue;
@@ -187,8 +215,9 @@ export const tasksRouter = createTRPCRouter({
     .input(
       z.object({
         id: z.string(),
-        /** The user's local date, so repeating tasks advance from the right day. */
+        /** The user's local date and hour (repeats, streaks, early-bird). */
         today: dateStr.optional(),
+        localHour: z.number().int().min(0).max(23).optional(),
         title: z.string().trim().min(1).max(500).optional(),
         description: z.string().max(20_000).nullish(),
         status: status.optional(),
@@ -206,7 +235,7 @@ export const tasksRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const userId = ctx.auth.id;
       const before = await owned(ctx.db, userId, input.id);
-      const { id, today, projectName, projectId: rawProjectId, ...rest } = input;
+      const { id, today, localHour, projectName, projectId: rawProjectId, ...rest } = input;
       if (rest.recurrence && !parseRule(rest.recurrence)) throw new TRPCError({ code: "BAD_REQUEST", message: "Unsupported repeat rule" });
       const projectId = await resolveProject(ctx.db, userId, { projectId: rawProjectId, projectName });
       const data: Prisma.TaskUncheckedUpdateInput = { ...rest, ...(projectId !== undefined ? { projectId } : {}) };
@@ -244,12 +273,30 @@ export const tasksRouter = createTRPCRouter({
 
       const task = await ctx.db.task.update({ where: { id }, data, select: taskSelect });
       if (notes.length) await log(ctx.db, id, "updated", notes.join("; "));
-      return task;
+
+      // Productivity: completing earns points; un-completing takes them back.
+      let reward: Reward | null = null;
+      const day = today ?? new Date().toISOString().slice(0, 10);
+      if (rest.status === "done" && before.status !== "done") {
+        reward = await recordCompletion(ctx.db, userId, before, { today: day, hour: localHour });
+      } else if (rest.status && rest.status !== "done" && before.status === "done") {
+        await undoCompletion(ctx.db, userId, id);
+      }
+      return { ...task, reward };
     }),
 
   /** Move a task between two neighbours (fractional ordering), optionally into another status column. */
   move: protectedProcedure
-    .input(z.object({ id: z.string(), beforeId: z.string().nullish(), afterId: z.string().nullish(), status: status.optional(), today: dateStr.optional() }))
+    .input(
+      z.object({
+        id: z.string(),
+        beforeId: z.string().nullish(),
+        afterId: z.string().nullish(),
+        status: status.optional(),
+        today: dateStr.optional(),
+        localHour: z.number().int().min(0).max(23).optional(),
+      }),
+    )
     .mutation(async ({ ctx, input }) => {
       const userId = ctx.auth.id;
       const task = await owned(ctx.db, userId, input.id);
@@ -268,7 +315,14 @@ export const tasksRouter = createTRPCRouter({
         data.completedAt = isClosed(input.status) ? new Date() : null;
         await log(ctx.db, task.id, "updated", `Status: ${STATUS_LABEL[task.status]} → ${STATUS_LABEL[input.status]}`);
       }
-      return ctx.db.task.update({ where: { id: task.id }, data, select: taskSelect });
+      const updated = await ctx.db.task.update({ where: { id: task.id }, data, select: taskSelect });
+      let reward: Reward | null = null;
+      if (input.status === "done" && task.status !== "done") {
+        reward = await recordCompletion(ctx.db, userId, task, { today: input.today ?? new Date().toISOString().slice(0, 10), hour: input.localHour });
+      } else if (input.status && input.status !== "done" && task.status === "done") {
+        await undoCompletion(ctx.db, userId, task.id);
+      }
+      return { ...updated, reward };
     }),
 
   delete: protectedProcedure.input(z.object({ id: z.string() })).mutation(async ({ ctx, input }) => {
@@ -301,6 +355,51 @@ export const tasksRouter = createTRPCRouter({
     if (!p) throw new TRPCError({ code: "NOT_FOUND" });
     await ctx.db.taskProject.delete({ where: { id: p.id } }); // its tasks move to the Inbox
   }),
+
+  // ── Calendar and procurement links ───────────────────────────────────
+  forEvent: protectedProcedure.input(z.object({ eventId: z.string() })).query(({ ctx, input }) =>
+    ctx.db.task.findMany({
+      where: { userId: ctx.auth.id, eventId: input.eventId },
+      select: { id: true, number: true, title: true, status: true },
+    }),
+  ),
+
+  forOpportunity: protectedProcedure.input(z.object({ opportunityId: z.string() })).query(({ ctx, input }) =>
+    ctx.db.task.findMany({
+      where: { userId: ctx.auth.id, opportunityId: input.opportunityId },
+      select: { id: true, number: true, title: true, status: true, dueDate: true },
+    }),
+  ),
+
+  /** Tasks due on one local date (calendar sidebar). */
+  dueOn: protectedProcedure.input(z.object({ date: dateStr })).query(({ ctx, input }) =>
+    ctx.db.task.findMany({
+      where: { userId: ctx.auth.id, dueDate: input.date, status: { not: "canceled" } },
+      orderBy: [{ dueTime: { sort: "asc", nulls: "first" } }, { sortOrder: "asc" }],
+      select: { id: true, number: true, title: true, status: true, priority: true, dueTime: true, recurrence: true },
+    }),
+  ),
+
+  // ── Productivity (gamification) ──────────────────────────────────────
+  productivity: protectedProcedure.input(z.object({ today: dateStr })).query(({ ctx, input }) => productivity(ctx.db, ctx.auth.id, input.today)),
+
+  saveProductivitySettings: protectedProcedure
+    .input(
+      z.object({
+        enabled: z.boolean(),
+        dailyGoal: z.number().int().min(1).max(100),
+        weeklyGoal: z.number().int().min(1).max(500),
+        daysOff: z.array(z.number().int().min(0).max(6)).max(6),
+        vacation: z.boolean(),
+      }),
+    )
+    .mutation(({ ctx, input }) =>
+      ctx.db.productivitySettings.upsert({
+        where: { userId: ctx.auth.id },
+        create: { userId: ctx.auth.id, ...input, daysOff: Array.from(new Set(input.daysOff)) },
+        update: { ...input, daysOff: Array.from(new Set(input.daysOff)) },
+      }),
+    ),
 
   // ── Email ─────────────────────────────────────────────────────────────
   forThread: protectedProcedure.input(z.object({ threadId: z.string() })).query(({ ctx, input }) =>

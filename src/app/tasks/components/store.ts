@@ -2,6 +2,7 @@
 import React from "react";
 import { toast } from "sonner";
 import { api, type RouterInputs, type RouterOutputs } from "@/trpc/react";
+import { emitReward } from "@/components/task-rewards";
 
 export type Task = RouterOutputs["tasks"]["list"]["tasks"][number];
 export type Project = RouterOutputs["tasks"]["list"]["projects"][number];
@@ -9,6 +10,8 @@ export type CreateInput = RouterInputs["tasks"]["create"];
 export type UpdateInput = RouterInputs["tasks"]["update"];
 export type MoveInput = RouterInputs["tasks"]["move"];
 export type Activity = { id: string; action: string; summary: string; createdAt: Date };
+export type Productivity = RouterOutputs["tasks"]["productivity"];
+export type ProductivitySettingsInput = RouterInputs["tasks"]["saveProductivitySettings"];
 
 /**
  * Everything the task screens need, behind one interface: the live tRPC store
@@ -26,6 +29,8 @@ export type TaskStore = {
   saveProject: (input: RouterInputs["tasks"]["saveProject"]) => Promise<void>;
   deleteProject: (id: string) => void;
   useActivity: (taskId: string | null) => Activity[];
+  useProductivity: () => Productivity | undefined;
+  saveProductivitySettings: (input: ProductivitySettingsInput) => Promise<void>;
 };
 
 export const localToday = () => {
@@ -45,17 +50,19 @@ export function useTrpcTaskStore(): TaskStore {
 
   const createM = api.tasks.create.useMutation({ onError });
   const updateM = api.tasks.update.useMutation({
-    onSuccess: (t) => {
+    onSuccess: ({ reward, ...t }) => {
+      emitReward(reward);
       patch((all) => all.map((x) => (x.id === t.id ? { ...x, ...t } : x)));
       // Projects may have been created from "#name"; repeating tasks move dates.
       void utils.tasks.list.invalidate();
     },
     onError,
   });
-  const moveM = api.tasks.move.useMutation({ onError });
+  const moveM = api.tasks.move.useMutation({ onError, onSuccess: ({ reward }) => emitReward(reward) });
   const removeM = api.tasks.delete.useMutation({ onError, onSuccess: () => void utils.tasks.list.invalidate() });
   const saveProjectM = api.tasks.saveProject.useMutation({ onError, onSuccess: () => void utils.tasks.list.invalidate() });
   const deleteProjectM = api.tasks.deleteProject.useMutation({ onError, onSuccess: () => void utils.tasks.list.invalidate() });
+  const settingsM = api.tasks.saveProductivitySettings.useMutation({ onError, onSuccess: () => void utils.tasks.productivity.invalidate() });
 
   return {
     tasks: list.data?.tasks ?? [],
@@ -115,7 +122,7 @@ export function useTrpcTaskStore(): TaskStore {
             : x,
         ),
       );
-      updateM.mutate({ ...input, today: input.today ?? localToday() });
+      updateM.mutate({ ...input, today: input.today ?? localToday(), localHour: new Date().getHours() });
     },
     move: (input) => {
       patch((all) => {
@@ -124,7 +131,7 @@ export function useTrpcTaskStore(): TaskStore {
         const sortOrder = before && after ? (before.sortOrder + after.sortOrder) / 2 : before ? before.sortOrder + 10000 : after ? after.sortOrder - 10000 : undefined;
         return all.map((x) => (x.id === input.id ? { ...x, ...(sortOrder !== undefined ? { sortOrder } : {}), ...(input.status ? { status: input.status } : {}) } : x));
       });
-      moveM.mutate(input);
+      moveM.mutate({ ...input, today: input.today ?? localToday(), localHour: new Date().getHours() });
     },
     remove: (id) => {
       patch((all) => all.filter((x) => x.id !== id && x.parentId !== id));
@@ -134,6 +141,12 @@ export function useTrpcTaskStore(): TaskStore {
       await saveProjectM.mutateAsync(input);
     },
     deleteProject: (id) => deleteProjectM.mutate({ id }),
+    useProductivity: function useProductivity() {
+      return api.tasks.productivity.useQuery({ today: localToday() }, { staleTime: 30_000 }).data;
+    },
+    saveProductivitySettings: async (input) => {
+      await settingsM.mutateAsync(input);
+    },
     useActivity: function useActivity(taskId) {
       const q = api.tasks.get.useQuery({ id: taskId ?? "" }, { enabled: !!taskId && !taskId.startsWith("temp-") });
       return React.useMemo(() => (q.data?.activity ?? []) as Activity[], [q.data]);
