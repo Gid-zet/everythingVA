@@ -11,6 +11,7 @@ import { CCM_TEMPLATE } from "@/server/procurement/ccm-template";
 import { availableSources, runDiscovery, samConfigured } from "@/server/procurement/discovery";
 import { qualifyOpportunity } from "@/server/procurement/qualify";
 import { ACTIVE_STATUSES, APPROVAL_STATUSES, STATUS_LABELS } from "@/server/procurement/types";
+import { countByDay, fitHistogram, funnel, periodTotals, profileCompleteness } from "@/server/procurement/dashboard-stats";
 
 /** Every procedure runs inside the caller's workspace, with their role. */
 const wsProcedure = protectedProcedure.use(async ({ ctx, next }) => {
@@ -97,6 +98,77 @@ export const procurementRouter = createTRPCRouter({
       upcoming,
       lastRuns,
       alerts: buildAlerts({ now, hasProfile: !!profile, credentials, documents, samConfigured: samConfigured() }),
+    };
+  }),
+
+  /** Charts and breakdowns for the dashboard, all computed from stored data. */
+  analytics: wsProcedure.query(async ({ ctx }) => {
+    const { db } = ctx;
+    const { workspaceId } = ctx.ws;
+    const now = new Date();
+    const since = new Date(now.getTime() - 30 * 86400_000);
+    const active = { workspaceId, status: { in: ACTIVE_STATUSES } };
+    const [discovered, byStatus, assessed, eligibility, sources, topMatches, activity, credentials, documents, profile, activeCount] =
+      await Promise.all([
+        db.opportunity.findMany({ where: { workspaceId, discoveredAt: { gte: since } }, select: { discoveredAt: true }, take: 20_000 }),
+        db.opportunity.groupBy({ by: ["status"], where: { workspaceId }, _count: true }),
+        db.opportunity.findMany({ where: { ...active, fitScore: { not: null } }, select: { fitScore: true }, take: 20_000 }),
+        db.opportunity.groupBy({ by: ["eligibility"], where: active, _count: true }),
+        db.opportunity.groupBy({ by: ["source"], where: { workspaceId }, _count: true }),
+        db.opportunity.findMany({
+          where: { ...active, fitScore: { not: null }, OR: [{ deadline: null }, { deadline: { gt: now } }] },
+          orderBy: [{ fitScore: "desc" }, { deadline: { sort: "asc", nulls: "last" } }],
+          take: 6,
+          select: { id: true, title: true, organization: true, fitScore: true, eligibility: true, recommendation: true, deadline: true, source: true },
+        }),
+        db.auditLog.findMany({
+          where: { workspaceId },
+          orderBy: { createdAt: "desc" },
+          take: 8,
+          select: { id: true, actor: true, action: true, summary: true, createdAt: true, opportunity: { select: { id: true, title: true } } },
+        }),
+        db.credential.findMany({ where: { workspaceId }, select: { status: true, expiresAt: true } }),
+        db.knowledgeDocument.findMany({ where: { workspaceId, isLatest: true }, select: { status: true, expiresAt: true } }),
+        db.companyProfile.findUnique({ where: { workspaceId } }),
+        db.opportunity.count({ where: active }),
+      ]);
+
+    const trend = countByDay(discovered.map((d) => d.discoveredAt), 30, now);
+    const scores = assessed.map((a) => a.fitScore!);
+    const f = funnel(byStatus.map((b) => ({ status: b.status, count: b._count })));
+    const decided = f.stages.find((s) => s.key === "awarded")!.count + f.closed.unsuccessful;
+    const valid = (x: { status: string; expiresAt: Date | null }) => x.status === "verified" && (!x.expiresAt || x.expiresAt > now);
+
+    return {
+      trend,
+      week: periodTotals(trend, 7),
+      funnel: f,
+      fit: {
+        histogram: fitHistogram(scores),
+        average: scores.length ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : null,
+        assessed: scores.length,
+        active: activeCount,
+      },
+      eligibility: {
+        qualified: eligibility.find((e) => e.eligibility === "qualified")?._count ?? 0,
+        potentially_qualified: eligibility.find((e) => e.eligibility === "potentially_qualified")?._count ?? 0,
+        requires_clarification: eligibility.find((e) => e.eligibility === "requires_clarification")?._count ?? 0,
+        not_qualified: eligibility.find((e) => e.eligibility === "not_qualified")?._count ?? 0,
+        unscored: eligibility.find((e) => e.eligibility === null)?._count ?? 0,
+      },
+      sources: {
+        sam_gov: sources.find((s) => s.source === "sam_gov")?._count ?? 0,
+        canadabuys: sources.find((s) => s.source === "canadabuys")?._count ?? 0,
+        manual: sources.find((s) => s.source === "manual")?._count ?? 0,
+      },
+      winRate: decided ? { awarded: f.stages.find((s) => s.key === "awarded")!.count, decided } : null,
+      topMatches,
+      activity,
+      readiness: {
+        credentials: { valid: credentials.filter(valid).length, total: credentials.length },
+        documents: { valid: documents.filter(valid).length, total: documents.length },
+        profile: profileCompleteness(profile),
+      },
     };
   }),
 
