@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import { ArrowLeft, Bot, CheckCircle2, Circle, ExternalLink, Loader2, Lock, Paperclip, Sparkles, Trash2, User, Cog } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { AddAsTaskButton, localDateTime } from "@/components/add-as-task";
 import { api } from "@/trpc/react";
 import { cn } from "@/lib/utils";
 import { APPROVAL_STATUSES, SOURCE_LABELS, STATUS_LABELS, type OpportunityStatusId } from "@/server/procurement/types";
@@ -69,6 +70,7 @@ export default function OpportunityPage() {
               <ExternalLink className="mr-2 size-4" /> Original notice
             </a>
           </Button>
+          <OpportunityTaskButton o={o} />
           {isEditor && (
             <Button onClick={() => qualify.mutate({ id: o.id })} disabled={qualify.isPending}>
               {qualify.isPending ? <Loader2 className="mr-2 size-4 animate-spin" /> : <Sparkles className="mr-2 size-4" />}
@@ -408,5 +410,29 @@ function History({ logs }: { logs: { id: string; actor: "user" | "ai" | "system"
         <p className="text-sm text-muted-foreground">No activity yet.</p>
       )}
     </Section>
+  );
+}
+
+/** Put the bid on your personal task list, due at the response deadline. */
+function OpportunityTaskButton({ o }: { o: { id: string; title: string; deadline: Date | null; fitScore: number | null } }) {
+  const existing = api.tasks.forOpportunity.useQuery({ opportunityId: o.id }, { staleTime: 30_000 }).data;
+  return (
+    <AddAsTaskButton
+      existing={existing}
+      label="Add to my tasks"
+      size="default"
+      build={() => {
+        const due = o.deadline ? localDateTime(new Date(o.deadline)) : null;
+        return {
+          title: `Bid: ${o.title}`.slice(0, 500),
+          projectName: "Procurement",
+          priority: o.fitScore !== null && o.fitScore >= 70 ? "high" : "medium",
+          dueDate: due?.date ?? null,
+          dueTime: due?.time ?? null,
+          dueAt: o.deadline ? new Date(o.deadline) : null,
+          opportunityId: o.id,
+        };
+      }}
+    />
   );
 }

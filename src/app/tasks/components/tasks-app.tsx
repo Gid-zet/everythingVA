@@ -3,7 +3,7 @@ import React from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
-import { CalendarDays, CalendarRange, CheckCircle2, Inbox, LayoutGrid, List, ListTodo, Loader2, Mail, Plus, Tag, X } from "lucide-react";
+import { CalendarDays, CalendarRange, CheckCircle2, Inbox, LayoutGrid, List, ListTodo, Loader2, Mail, Plus, Tag, Trophy, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { addDays } from "@/lib/tasks/recurrence";
 import { counts, inboxView, isOpen, labelView, projectView, todayView, upcomingView, compareTasks, type Group } from "@/lib/tasks/views";
@@ -12,15 +12,23 @@ import { formatDayHeading, Kbd, PROJECT_COLORS, ProjectDot } from "./bits";
 import { QuickAdd } from "./quick-add";
 import { TaskDetail } from "./task-detail";
 import { TaskRow } from "./task-row";
+import dynamic from "next/dynamic";
+import { ProgressCard } from "./progress-card";
+
+// The progress page carries a chart library; load it only when opened.
+const ProgressView = dynamic(() => import("./progress").then((m) => m.ProgressView), {
+  ssr: false,
+  loading: () => <Loader2 className="mx-auto mt-16 size-5 animate-spin text-muted-foreground" />,
+});
 import { localToday, type CreateInput, type Project, type Task, type TaskStore } from "./store";
 
-type View = { kind: "inbox" | "today" | "upcoming" | "all" | "completed" } | { kind: "project"; id: string } | { kind: "label"; label: string };
+type View = { kind: "inbox" | "today" | "upcoming" | "all" | "completed" | "progress" } | { kind: "project"; id: string } | { kind: "label"; label: string };
 
 function readView(p: URLSearchParams): View {
   const v = p.get("view");
   if (v === "project" && p.get("id")) return { kind: "project", id: p.get("id")! };
   if (v === "label" && p.get("label")) return { kind: "label", label: p.get("label")! };
-  if (v === "inbox" || v === "upcoming" || v === "all" || v === "completed") return { kind: v };
+  if (v === "inbox" || v === "upcoming" || v === "all" || v === "completed" || v === "progress") return { kind: v };
   return { kind: "today" };
 }
 const BaseContext = React.createContext("/tasks");
@@ -50,6 +58,7 @@ function TasksAppInner({ store }: { store: TaskStore }) {
   const projectsById = React.useMemo(() => new Map(store.projects.map((p) => [p.id, p])), [store.projects]);
   const c = React.useMemo(() => counts(store.tasks, today), [store.tasks, today]);
   const labels = React.useMemo(() => Object.keys(c.byLabel).sort(), [c.byLabel]);
+  const productivity = store.useProductivity();
 
   const setParam = (changes: Record<string, string | null>) => {
     const next = new URLSearchParams(params.toString());
@@ -117,6 +126,9 @@ function TasksAppInner({ store }: { store: TaskStore }) {
     subtitle = "Last 14 days";
     const done = store.tasks.filter((t) => !isOpen(t)).sort((a, b) => String(b.completedAt ?? "").localeCompare(String(a.completedAt ?? "")));
     groups = [{ key: "done", label: "", tasks: done }];
+  } else if (view.kind === "progress") {
+    title = "Progress";
+    subtitle = "Points, goals, streaks and achievements";
   } else if (view.kind === "project") {
     const p = projectsById.get(view.id);
     title = p?.name ?? "Project";
@@ -134,7 +146,7 @@ function TasksAppInner({ store }: { store: TaskStore }) {
 
   return (
     <div className="flex min-h-screen bg-background">
-      <Sidebar store={store} view={view} counts={c} labels={labels} />
+      <Sidebar store={store} view={view} counts={c} labels={labels} productivity={productivity} />
 
       <main className="min-w-0 flex-1">
         <MobileNav view={view} projects={store.projects} />
@@ -146,8 +158,8 @@ function TasksAppInner({ store }: { store: TaskStore }) {
                 {title}
               </h1>
               <p className="mt-0.5 text-sm text-muted-foreground">
-                {subtitle ? `${subtitle} · ` : ""}
-                {total} {total === 1 ? "task" : "tasks"}
+                {subtitle ? `${subtitle}${view.kind === "progress" ? "" : " · "}` : ""}
+                {view.kind !== "progress" && `${total} ${total === 1 ? "task" : "tasks"}`}
                 {view.kind === "today" && c.overdue > 0 && <span className="text-[var(--viz-critical)]"> · {c.overdue} overdue</span>}
               </p>
             </div>
@@ -173,13 +185,15 @@ function TasksAppInner({ store }: { store: TaskStore }) {
             )}
           </header>
 
-          {view.kind !== "completed" && (
+          {view.kind !== "completed" && view.kind !== "progress" && (
             <div className="mb-6">
               <QuickAdd ref={quickAdd} projects={store.projects} defaults={defaults} onCreate={store.create} />
             </div>
           )}
 
-          {store.loading ? (
+          {view.kind === "progress" ? (
+            <ProgressView data={productivity} store={store} />
+          ) : store.loading ? (
             <Loader2 className="mx-auto mt-16 size-5 animate-spin text-muted-foreground" />
           ) : layout === "board" && boardAllowed ? (
             <Board tasks={boardTasks} store={store} today={today} projectsById={projectsById} onOpen={open} onToggle={toggle} showProject={view.kind !== "project"} />
@@ -236,6 +250,7 @@ function Empty({ view }: { view: View }) {
     completed: ["Nothing completed recently", "Completed tasks from the last 14 days appear here."],
     project: ["No open tasks in this project", "Add one above, or press B for the board."],
     label: ["No open tasks with this label", ""],
+    progress: ["", ""],
   }[view.kind];
   return (
     <div className="flex flex-col items-center rounded-2xl border border-dashed px-6 py-14 text-center">
@@ -262,7 +277,19 @@ function NavLink({ href, active, icon, label, count, tone }: { href: string; act
   );
 }
 
-function Sidebar({ store, view, counts: c, labels }: { store: TaskStore; view: View; counts: ReturnType<typeof counts>; labels: string[] }) {
+function Sidebar({
+  store,
+  view,
+  counts: c,
+  labels,
+  productivity,
+}: {
+  store: TaskStore;
+  view: View;
+  counts: ReturnType<typeof counts>;
+  labels: string[];
+  productivity: ReturnType<TaskStore["useProductivity"]>;
+}) {
   const viewHref = useViewHref();
   const [adding, setAdding] = React.useState(false);
   const [name, setName] = React.useState("");
@@ -281,6 +308,7 @@ function Sidebar({ store, view, counts: c, labels }: { store: TaskStore; view: V
             <Mail className="size-3.5" /> Mail
           </Link>
         </div>
+        <ProgressCard data={productivity} href={viewHref({ kind: "progress" })} />
         <nav className="space-y-0.5 p-2.5">
           <NavLink href={viewHref({ kind: "inbox" })} active={is("inbox")} icon={<Inbox className="size-4" />} label="Inbox" count={c.inbox} />
           <NavLink
@@ -294,6 +322,7 @@ function Sidebar({ store, view, counts: c, labels }: { store: TaskStore; view: V
           <NavLink href={viewHref({ kind: "upcoming" })} active={is("upcoming")} icon={<CalendarRange className="size-4" />} label="Upcoming" count={c.upcoming} />
           <NavLink href={viewHref({ kind: "all" })} active={is("all")} icon={<ListTodo className="size-4" />} label="All tasks" />
           <NavLink href={viewHref({ kind: "completed" })} active={is("completed")} icon={<CheckCircle2 className="size-4" />} label="Completed" />
+          <NavLink href={viewHref({ kind: "progress" })} active={is("progress")} icon={<Trophy className="size-4" />} label="Progress" />
         </nav>
 
         <div className="px-2.5 pb-2">
@@ -376,6 +405,7 @@ function MobileNav({ view, projects }: { view: View; projects: Project[] }) {
     ["upcoming", "Upcoming"],
     ["all", "All"],
     ["completed", "Done"],
+    ["progress", "Progress"],
   ];
   return (
     <div className="flex gap-1.5 overflow-x-auto border-b px-4 py-2.5 md:hidden">

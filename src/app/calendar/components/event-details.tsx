@@ -9,6 +9,7 @@ import { api } from "@/trpc/react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { RangeEvent } from "./event-editor";
+import { AddAsTaskButton, localDateTime } from "@/components/add-as-task";
 
 function when(e: RangeEvent) {
   if (e.allDay) {
@@ -112,6 +113,8 @@ export function EventDetails({
           </div>
         </div>
 
+        <EventTaskButton event={event} />
+
         {event.meetingUrl && (
           <Button asChild className="w-full gap-2">
             <a href={event.meetingUrl} target="_blank" rel="noreferrer noopener">
@@ -204,5 +207,29 @@ export function EventDetails({
         )}
       </div>
     </aside>
+  );
+}
+
+/** Turn the event into a task due when it starts (e.g. prep or follow-up). */
+function EventTaskButton({ event }: { event: RangeEvent }) {
+  const existing = api.tasks.forEvent.useQuery({ eventId: event.id }, { staleTime: 30_000 }).data;
+  return (
+    <AddAsTaskButton
+      existing={existing}
+      build={() => {
+        const start = event.allDay ? new Date(`${event.start.slice(0, 10)}T00:00:00`) : new Date(event.start);
+        const { date, time } = localDateTime(start);
+        return {
+          title: event.title || "Calendar event",
+          dueDate: date,
+          dueTime: event.allDay ? null : time,
+          dueAt: event.allDay ? null : start,
+          eventId: event.id,
+          eventCalendarId: event.calendarId,
+          eventStart: start,
+          description: event.location ? `Location: ${event.location}` : undefined,
+        };
+      }}
+    />
   );
 }

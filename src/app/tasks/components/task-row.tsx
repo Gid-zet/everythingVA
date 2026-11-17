@@ -1,6 +1,6 @@
 "use client";
 import React from "react";
-import { AlignLeft, Clock, GitBranch, Mail, Repeat } from "lucide-react";
+import { AlignLeft, CalendarClock, Clock, GitBranch, Landmark, Mail, Repeat } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { DueChip, formatEstimate, ProjectDot, TaskCheck } from "./bits";
 import type { Project, Task } from "./store";
@@ -59,6 +59,8 @@ export function TaskRow({
           )}
           {task.description && <AlignLeft className="size-3 text-muted-foreground" aria-label="Has notes" />}
           {task.threadId && <Mail className="size-3 text-muted-foreground" aria-label="From an email" />}
+          {task.eventId && <CalendarClock className="size-3 text-muted-foreground" aria-label="From a calendar event" />}
+          {task.opportunityId && <Landmark className="size-3 text-muted-foreground" aria-label="From procurement" />}
           {task.estimateMinutes && (
             <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
               <Clock className="size-3" />

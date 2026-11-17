@@ -1,7 +1,7 @@
 "use client";
 import React from "react";
 import Link from "next/link";
-import { CalendarDays, Clock, Flag, Folder, History, Mail, Repeat, Trash2, X, CircleDot, Tag } from "lucide-react";
+import { CalendarDays, CalendarClock, Clock, Flag, Folder, History, Landmark, Mail, Repeat, Trash2, X, CircleDot, Tag } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { ChipsInput } from "@/app/procurement/components/bits";
@@ -208,6 +208,34 @@ export function TaskDetail({ task, store, onClose, onOpen }: { task: Task | null
             </Link>
           )}
 
+          {task.eventId && (
+            <Link
+              href={`/calendar?${task.eventStart ? `date=${localDayOf(task.eventStart)}&` : ""}event=${encodeURIComponent(task.eventId)}`}
+              className="flex items-center gap-3 rounded-xl border px-4 py-3 text-sm transition-colors hover:bg-muted/50"
+            >
+              <CalendarClock className="size-4 shrink-0 text-muted-foreground" />
+              <span className="min-w-0">
+                <span className="block text-[11px] text-muted-foreground">From calendar event</span>
+                <span className="block truncate">
+                  {task.eventStart ? new Date(task.eventStart).toLocaleString(undefined, { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : "Open in calendar"}
+                </span>
+              </span>
+            </Link>
+          )}
+
+          {task.opportunity && (
+            <Link
+              href={`/procurement/opportunities/${task.opportunity.id}`}
+              className="flex items-center gap-3 rounded-xl border px-4 py-3 text-sm transition-colors hover:bg-muted/50"
+            >
+              <Landmark className="size-4 shrink-0 text-muted-foreground" />
+              <span className="min-w-0">
+                <span className="block text-[11px] text-muted-foreground">Procurement opportunity</span>
+                <span className="block truncate">{task.opportunity.title}</span>
+              </span>
+            </Link>
+          )}
+
           {!task.parentId && (
             <div>
               <p className="mb-2 text-xs font-semibold">
@@ -259,3 +287,8 @@ export function TaskDetail({ task, store, onClose, onOpen }: { task: Task | null
     </Sheet>
   );
 }
+
+const localDayOf = (d: Date | string) => {
+  const x = new Date(d);
+  return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, "0")}-${String(x.getDate()).padStart(2, "0")}`;
+};

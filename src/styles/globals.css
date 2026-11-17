@@ -265,3 +265,11 @@
   --viz-grid: #222226;
   --viz-neutral: #3f3f46;
 }
+
+/* Task completion confetti (src/components/task-rewards.tsx). */
+@keyframes confetti-fall {
+  0% { transform: translate3d(0, 0, 0) rotate(0deg); opacity: 1; }
+  100% { transform: translate3d(var(--drift), 105vh, 0) rotate(var(--spin)); opacity: 0.9; }
+}
+.confetti-piece { animation-name: confetti-fall; animation-timing-function: cubic-bezier(0.2, 0.6, 0.4, 1); animation-fill-mode: forwards; }
+@media (prefers-reduced-motion: reduce) { .confetti-piece { display: none; } }

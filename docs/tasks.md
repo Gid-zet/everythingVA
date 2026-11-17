@@ -41,3 +41,33 @@ and repeats never drift across time zones.
 ## Not yet
 
 Reminders/notifications, calendar time-blocking, sharing tasks with other users, manual reordering within a list (board columns and statuses are supported), and file attachments.
+
+## Connected workflow
+
+Anything can become a task, and the task links back to where it came from:
+
+| From | How | Task gets |
+|---|---|---|
+| Email | Thread toolbar → **Add task** (quick add prefilled with the subject, or **Suggest tasks with AI**) | Link to the thread; chips under the subject |
+| Calendar event | Event panel → **Add as task** | Due at the event's start; link back (`/calendar?date=…&event=…`) |
+| Procurement opportunity | Opportunity page → **Add to my tasks** | Title "Bid: …", due at the response deadline, project "Procurement", high priority if fit ≥ 70 |
+
+The calendar sidebar also lists the tasks due on the selected day, so you can tick them off or add one for that day.
+
+## Gamification
+
+Modelled on [Todoist Karma](https://todoist.com/help/articles/introduction-to-karma) (points, levels, daily and weekly goals, days off, vacation mode) and [Duolingo's streak](https://blog.duolingo.com/how-duolingo-streak-builds-habit) (a streak protected by freezes you earn). Gamification researchers argue streaks need forgiveness, because one broken streak makes people quit ([Yu-kai Chou](https://yukaichou.com/gamification-analysis/streak-design-gamification-motivation-burnout/)). So:
+
+- **Points:**
+  - Each completed task: 10, plus 8 / 5 / 3 / 1 by priority (urgent / high / medium / low).
+  - +4 if done on time, and +2 if it came from an email, event or opportunity.
+  - Daily goal: +25, plus 2 per streak day (up to 10). Weekly goal: +100.
+  - Un-completing a task takes its points back. **No penalties for overdue tasks.**
+- **10 levels**, from Starter to Enlightened, getting further apart.
+- **Streaks:**
+  - Days you hit your daily goal. Days off (default Saturday and Sunday) and vacation mode don't break them.
+  - You earn a **freeze** every 7 goal days and can hold up to 2. A freeze covers a missed working day.
+- **17 achievements:** milestones, streaks, on time, early bird, inbox zero, clean slate, and the connected ones ("Email tamer", "Meeting ready", "Bid builder").
+- **Celebrations:** a points toast on each completion, confetti for goals and level-ups (none with reduced motion), and toasts for new badges. **Tasks → Progress** has the details, a 30-day chart and settings, including an off switch.
+
+Rules: `src/lib/tasks/gamification.ts` (unit-tested). Server: `src/server/tasks/rewards.ts`. Data: `TaskCompletion`, `ProductivitySettings`, `UserAchievement` (migration `20261118000000_connect_and_gamify`).

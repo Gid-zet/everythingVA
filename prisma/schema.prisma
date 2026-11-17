@@ -32,6 +32,10 @@ model User {
 
   tasks        Task[]
   taskProjects TaskProject[]
+
+  taskCompletions      TaskCompletion[]
+  achievements         UserAchievement[]
+  productivitySettings ProductivitySettings?
 }
 
 enum Role {
@@ -851,6 +855,7 @@ model Opportunity {
   workspace ProcurementWorkspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   tasks     ProcurementTask[]
   auditLogs AuditLog[]
+  myTasks   Task[]
 
   @@unique([workspaceId, source, externalId])
   @@index([workspaceId, status])
@@ -977,10 +982,17 @@ model Task {
   sortOrder       Float        @default(65535)
   completedAt     DateTime?
   threadId        String?
+  /// Calendar event this task came from (events load live from the provider, so no FK).
+  eventId         String?
+  eventCalendarId String?
+  eventStart      DateTime?
+  opportunityId   String?
   createdAt       DateTime     @default(now())
   updatedAt       DateTime     @updatedAt
 
-  user     User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  opportunity Opportunity?     @relation(fields: [opportunityId], references: [id], onDelete: SetNull)
+  completions TaskCompletion[]
   project  TaskProject?   @relation(fields: [projectId], references: [id], onDelete: SetNull)
   parent   Task?          @relation("Subtasks", fields: [parentId], references: [id], onDelete: Cascade)
   subtasks Task[]         @relation("Subtasks")
@@ -993,6 +1005,8 @@ model Task {
   @@index([projectId])
   @@index([parentId])
   @@index([threadId])
+  @@index([userId, eventId])
+  @@index([opportunityId])
 }
 
 model TaskActivity {
@@ -1005,4 +1019,54 @@ model TaskActivity {
   task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
 
   @@index([taskId, createdAt])
+}
+
+// ─── Productivity (gamification) ────────────────────────────────────────────
+// Points per completion (Todoist Karma-style), daily/weekly goals, streaks
+// with earned freezes (Duolingo-style), achievements. See docs/tasks.md.
+
+/// One completed task (or a goal bonus when taskId is null and kind = goal).
+model TaskCompletion {
+  id          String   @id @default(cuid())
+  userId      String
+  taskId      String?
+  kind        String   @default("task") // task | daily_goal | weekly_goal
+  /// User's local calendar date of the completion, YYYY-MM-DD.
+  localDate   String
+  localHour   Int?
+  points      Int
+  onTime      Boolean  @default(false)
+  priority    String?
+  /// email | calendar | procurement, when the task came from one.
+  source      String?
+  completedAt DateTime @default(now())
+
+  user User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  task Task? @relation(fields: [taskId], references: [id], onDelete: SetNull)
+
+  @@index([userId, localDate])
+  @@index([taskId])
+}
+
+model ProductivitySettings {
+  userId     String  @id
+  enabled    Boolean @default(true)
+  dailyGoal  Int     @default(5)
+  weeklyGoal Int     @default(25)
+  /// Weekdays that don't count against streaks (0 = Sunday … 6 = Saturday).
+  daysOff    Int[]   @default([0, 6])
+  vacation   Boolean @default(false)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model UserAchievement {
+  id         String   @id @default(cuid())
+  userId     String
+  key        String
+  unlockedAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, key])
 }
