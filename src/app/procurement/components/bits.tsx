@@ -2,6 +2,7 @@
 import React from "react";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { PageBanner, type BannerStat, type BannerTone } from "@/components/page-banner";
 import {
   ELIGIBILITY_LABELS,
   RECOMMENDATION_LABELS,
@@ -9,16 +10,27 @@ import {
   type OpportunityStatusId,
 } from "@/server/procurement/types";
 
-export function PageHeader({ title, description, actions }: { title: string; description?: React.ReactNode; actions?: React.ReactNode }) {
-  return (
-    <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-      <div className="min-w-0">
-        <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
-        {description && <p className="mt-1 max-w-2xl text-sm text-muted-foreground">{description}</p>}
-      </div>
-      {actions && <div className="flex flex-wrap gap-2">{actions}</div>}
-    </div>
-  );
+/** Page header: a colourful banner (see components/page-banner). */
+export function PageHeader({
+  title,
+  description,
+  actions,
+  tone = "indigo",
+  icon,
+  live,
+  stats,
+  eyebrow = "Procurement",
+}: {
+  title: string;
+  description?: React.ReactNode;
+  actions?: React.ReactNode;
+  tone?: BannerTone;
+  icon?: React.ElementType;
+  live?: { updatedAt: number; refreshing?: boolean } | null;
+  stats?: BannerStat[];
+  eyebrow?: React.ReactNode;
+}) {
+  return <PageBanner title={title} description={description} actions={actions} tone={tone} icon={icon} live={live} stats={stats} eyebrow={eyebrow} />;
 }
 
 export function Section({ title, description, children, actions, className }: { title: string; description?: string; children: React.ReactNode; actions?: React.ReactNode; className?: string }) {

@@ -6,6 +6,7 @@ import { ArrowLeft, Bot, CheckCircle2, Circle, ExternalLink, Loader2, Lock, Pape
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { AddAsTaskButton, localDateTime } from "@/components/add-as-task";
+import { PageBanner, type BannerTone } from "@/components/page-banner";
 import { api } from "@/trpc/react";
 import { cn } from "@/lib/utils";
 import { APPROVAL_STATUSES, SOURCE_LABELS, STATUS_LABELS, type OpportunityStatusId } from "@/server/procurement/types";
@@ -26,12 +27,22 @@ import {
 
 type StoredQualification = Qualification & { guardRailNotes?: string[] };
 
+/** Banner colour follows the agent's verdict. */
+const ELIGIBILITY_TONE: Record<string, BannerTone> = {
+  qualified: "emerald",
+  potentially_qualified: "ocean",
+  requires_clarification: "sunset",
+  not_qualified: "rose",
+  none: "indigo",
+};
+
 const toLocalInput = (d: Date | null | undefined) => (d ? new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16) : "");
 
 export default function OpportunityPage() {
   const { id } = useParams<{ id: string }>();
   const utils = api.useUtils();
-  const { data: o, isLoading, error } = api.procurement.opportunity.useQuery({ id });
+  const opp = api.procurement.opportunity.useQuery({ id }, { refetchInterval: 20_000, refetchIntervalInBackground: false });
+  const { data: o, isLoading, error } = opp;
   const refresh = () => void utils.procurement.invalidate();
   const update = api.procurement.updateOpportunity.useMutation({ onSuccess: refresh, onError: (e) => toast.error(e.message) });
   const qualify = api.procurement.qualify.useMutation({ onSuccess: refresh, onError: (e) => toast.error(e.message) });
@@ -51,20 +62,23 @@ export default function OpportunityPage() {
         <ArrowLeft className="size-3" /> Opportunities
       </Link>
 
-      <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-        <div className="min-w-0">
-          <div className="mb-2 flex flex-wrap items-center gap-1.5">
-            <StatusBadge status={o.status} />
-            <EligibilityBadge value={o.eligibility} />
-            <RecommendationBadge value={o.recommendation} />
-          </div>
-          <h1 className="text-balance text-xl font-semibold tracking-tight sm:text-2xl">{o.title}</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            {o.organization ?? "Unknown issuer"} · {SOURCE_LABELS[o.source]}
-            {o.referenceNumber ? ` · Ref ${o.referenceNumber}` : ""}
-          </p>
-        </div>
-        <div className="flex shrink-0 gap-2">
+      <PageBanner
+        wrapTitle
+        tone={ELIGIBILITY_TONE[o.eligibility ?? "none"]}
+        live={opp.dataUpdatedAt ? { updatedAt: opp.dataUpdatedAt, refreshing: opp.isFetching } : null}
+        eyebrow={`${SOURCE_LABELS[o.source]}${o.referenceNumber ? ` · Ref ${o.referenceNumber}` : ""}`}
+        title={o.title}
+        description={o.organization ?? "Unknown issuer"}
+        stats={[
+          { label: "Fit", value: o.fitScore ?? "–" },
+          {
+            label: "Days left",
+            value: o.deadline ? Math.max(0, Math.ceil((new Date(o.deadline).getTime() - Date.now()) / 86400_000)) : "–",
+          },
+          { label: "Amended", value: o.amendedAt ? formatDate(o.amendedAt) : "No" },
+        ]}
+        actions={
+          <>
           <Button variant="outline" asChild>
             <a href={o.sourceUrl} target="_blank" rel="noopener noreferrer">
               <ExternalLink className="mr-2 size-4" /> Original notice
@@ -77,8 +91,15 @@ export default function OpportunityPage() {
               {qualify.isPending ? "Assessing…" : o.qualifiedAt ? "Re-assess fit" : "Assess fit"}
             </Button>
           )}
+          </>
+        }
+      >
+        <div className="mt-3 flex flex-wrap items-center gap-1.5 [&>span]:bg-white/90">
+          <StatusBadge status={o.status} />
+          <EligibilityBadge value={o.eligibility} />
+          <RecommendationBadge value={o.recommendation} />
         </div>
-      </div>
+      </PageBanner>
 
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-2">

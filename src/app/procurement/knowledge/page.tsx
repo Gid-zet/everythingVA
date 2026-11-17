@@ -1,6 +1,6 @@
 "use client";
 import React from "react";
-import { FileText, Loader2, Lock, ShieldCheck, Trash2, Upload, Eye, History } from "lucide-react";
+import { BookOpen, FileText, Loader2, Lock, ShieldCheck, Trash2, Upload, Eye, History } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -35,6 +35,16 @@ export default function KnowledgePage() {
   return (
     <>
       <PageHeader
+        tone="violet"
+        icon={BookOpen}
+        stats={[
+          { label: "Documents", value: (docs ?? []).filter((d) => d.isLatest).length },
+          { label: "Verified", value: (docs ?? []).filter((d) => d.isLatest && d.status === "verified").length },
+          {
+            label: "Expiring 60d",
+            value: (docs ?? []).filter((d) => d.isLatest && d.expiresAt && new Date(d.expiresAt).getTime() - Date.now() < 60 * 86400_000).length,
+          },
+        ]}
         title="Knowledge base"
         description="Verified company documents the agents can draw on: capability statements, certificates, insurance, past performance, bios and templates. Text is extracted on upload."
         actions={

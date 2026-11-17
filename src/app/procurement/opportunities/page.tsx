@@ -2,7 +2,7 @@
 import React, { Suspense } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Loader2, Plus, RefreshCw, Search } from "lucide-react";
+import { Loader2, Plus, RefreshCw, Search, Telescope } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -45,7 +45,8 @@ function OpportunitiesInner() {
   };
 
   const { data: overview } = api.procurement.overview.useQuery();
-  const { data, isLoading } = api.procurement.opportunities.useQuery(filters);
+  const list = api.procurement.opportunities.useQuery(filters, { refetchInterval: 20_000, refetchIntervalInBackground: false });
+  const { data, isLoading } = list;
   const qualify = api.procurement.qualify.useMutation({
     onSuccess: () => void utils.procurement.invalidate(),
     onError: (e) => toast.error(e.message),
@@ -78,6 +79,14 @@ function OpportunitiesInner() {
       <PageHeader
         title="Opportunities"
         description="Found on SAM.gov and CanadaBuys or added by hand, ranked by keyword relevance until the qualification agent scores them."
+        tone="ocean"
+        icon={Telescope}
+        live={list.dataUpdatedAt ? { updatedAt: list.dataUpdatedAt, refreshing: list.isFetching } : null}
+        stats={[
+          { label: "Showing", value: data?.length ?? 0 },
+          { label: "Assessed", value: (data ?? []).filter((o) => o.fitScore !== null).length },
+          { label: "Close in 7 days", value: (data ?? []).filter((o) => o.deadline && new Date(o.deadline).getTime() - Date.now() < 7 * 86400_000 && new Date(o.deadline).getTime() > Date.now()).length },
+        ]}
         actions={
           editor && (
             <>

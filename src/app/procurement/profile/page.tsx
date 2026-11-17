@@ -1,6 +1,6 @@
 "use client";
 import React from "react";
-import { Loader2, Pencil, Plus, ShieldCheck, Trash2, Wand2 } from "lucide-react";
+import { Building2, Loader2, Pencil, Plus, ShieldCheck, Trash2, Wand2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -49,6 +49,7 @@ export default function ProfilePage() {
   const utils = api.useUtils();
   const { data: overview } = api.procurement.overview.useQuery();
   const { data: profile, isLoading } = api.procurement.profile.useQuery();
+  const { data: creds } = api.procurement.credentials.useQuery();
   const [form, setForm] = React.useState(EMPTY);
   React.useEffect(() => setForm(fromProfile(profile)), [profile]);
 
@@ -77,6 +78,13 @@ export default function ProfilePage() {
       <PageHeader
         title="Company profile"
         description="What the agents know about your business. Keep it accurate: discovery searches with it, and qualification only counts verified credentials."
+        tone="emerald"
+        icon={Building2}
+        stats={[
+          { label: "Verified", value: `${(creds ?? []).filter((c) => c.status === "verified").length}/${creds?.length ?? 0}` },
+          { label: "Services", value: profile?.services.length ?? 0 },
+          { label: "Keywords", value: profile?.keywords.length ?? 0 },
+        ]}
         actions={
           isAdmin && (
             <Button variant="outline" onClick={() => template.mutate()} disabled={template.isPending}>

@@ -1,6 +1,6 @@
 "use client";
 import React from "react";
-import { CheckCircle2, Loader2, RefreshCw, Trash2, XCircle } from "lucide-react";
+import { CheckCircle2, Loader2, RefreshCw, Settings2, Trash2, XCircle } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { api } from "@/trpc/react";
@@ -38,7 +38,17 @@ export default function SettingsPage() {
 
   return (
     <>
-      <PageHeader title="Sources & team" description="Where opportunities come from, how discovery runs, and who can do what." />
+      <PageHeader
+        title="Sources & team"
+        description="Where opportunities come from, how discovery runs, and who can do what."
+        tone="rose"
+        icon={Settings2}
+        stats={[
+          { label: "Sources on", value: sources.filter((s) => s.on).length },
+          { label: "Runs", value: runs?.length ?? 0 },
+          { label: "Failed", value: (runs ?? []).filter((r) => r.error).length },
+        ]}
+      />
 
       <Section title="Opportunity sources" description="Discovery runs daily at 11:00 UTC (Vercel Cron). You can also run it now.">
         <ul className="-my-2 divide-y">
