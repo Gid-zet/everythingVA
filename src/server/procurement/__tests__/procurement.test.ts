@@ -7,6 +7,7 @@ import { detectChanges } from "../changes";
 import { buildAlerts } from "../alerts";
 import { applyGuardRails, statusAfterQualification, type Qualification } from "../qualification-rules";
 import { CCM_TEMPLATE } from "../ccm-template";
+import { countByDay, fitHistogram, funnel, periodTotals, profileCompleteness } from "../dashboard-stats";
 
 const profile = CCM_TEMPLATE;
 
@@ -254,5 +255,39 @@ describe("statusAfterQualification", () => {
   it("never overrides a status a person set", () => {
     expect(statusAfterQualification("approved_to_pursue", "not_qualified")).toBeUndefined();
     expect(statusAfterQualification("submitted", "qualified")).toBeUndefined();
+  });
+});
+
+describe("dashboard stats", () => {
+  const now = new Date("2026-11-17T15:00:00Z");
+  it("counts discoveries per UTC day, oldest first", () => {
+    const s = countByDay([new Date("2026-11-17T01:00:00Z"), new Date("2026-11-17T23:00:00Z"), new Date("2026-11-15T12:00:00Z"), new Date("2026-10-01T00:00:00Z")], 7, now);
+    expect(s).toHaveLength(7);
+    expect(s[6]).toEqual({ date: "2026-11-17", count: 2 });
+    expect(s[4]).toEqual({ date: "2026-11-15", count: 1 });
+    expect(s.reduce((n, p) => n + p.count, 0)).toBe(3);
+  });
+  it("compares the last period with the one before", () => {
+    const series = [1, 1, 1, 2, 2, 2].map((count) => ({ count }));
+    expect(periodTotals(series, 3)).toEqual({ current: 6, previous: 3 });
+  });
+  it("buckets fit scores, including the edges", () => {
+    expect(fitHistogram([0, 19, 20, 79, 80, 100]).map((b) => b.count)).toEqual([2, 1, 0, 1, 2]);
+  });
+  it("groups statuses into funnel stages", () => {
+    const f = funnel([
+      { status: "discovered", count: 10 },
+      { status: "under_review", count: 2 },
+      { status: "awaiting_decision", count: 1 },
+      { status: "proposal_in_progress", count: 2 },
+      { status: "declined", count: 4 },
+    ]);
+    expect(f.stages.map((s) => s.count)).toEqual([10, 3, 0, 2, 0, 0]);
+    expect(f.closed.declined).toBe(4);
+  });
+  it("scores profile completeness", () => {
+    expect(profileCompleteness(null)).toEqual({ filled: 0, total: 10 });
+    const p = { summary: "A consulting firm doing leadership work", services: ["a"], keywords: ["b"], naicsCodes: ["611430"], unspscCodes: [], businessTypes: [], countries: ["US"], yearsInBusiness: null, governmentExperience: null, website: null };
+    expect(profileCompleteness(p)).toEqual({ filled: 5, total: 10 });
   });
 });
