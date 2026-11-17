@@ -1,6 +1,25 @@
 "use client";
 
+import React from "react";
+import { useSetAtom } from "jotai";
+import { useLocalStorage } from "usehooks-ts";
 import { Mail } from "@/app/mail/components/mail";
+import { threadIdAtom } from "@/lib/atoms";
+
+/** Deep link from elsewhere in the app (e.g. a task): /mail?thread=<id>&account=<id>. */
+function useOpenThreadFromUrl() {
+  const setThreadId = useSetAtom(threadIdAtom);
+  const [, setAccountId] = useLocalStorage("accountId", "");
+  React.useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const thread = params.get("thread");
+    if (!thread) return;
+    const account = params.get("account");
+    if (account) setAccountId(account);
+    setThreadId(thread);
+    window.history.replaceState(null, "", window.location.pathname);
+  }, [setAccountId, setThreadId]);
+}
 
 interface MailClientProps {
   defaultLayout: number[] | undefined;
@@ -13,6 +32,7 @@ export default function MailClient({
   defaultCollapsed,
   navCollapsedSize,
 }: MailClientProps) {
+  useOpenThreadFromUrl();
   return (
     <>
       {/* Mobile responsive message */}

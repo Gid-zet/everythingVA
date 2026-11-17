@@ -14,6 +14,7 @@ import {
   Trash2,
   Undo2,
   X,
+  ListPlus,
 } from "lucide-react";
 import React from "react";
 import { format } from "date-fns";
@@ -34,6 +35,11 @@ import SearchDisplay from "./search-display";
 import ReplyBox from "./reply-box";
 import { SnoozeMenu } from "./snooze-menu";
 import { ThreadInsights } from "./thread-insights";
+import dynamic from "next/dynamic";
+import { ThreadTaskChips } from "./thread-task-chips";
+
+// The task dialog carries the date parser; load it only when it's opened.
+const ThreadTaskDialog = dynamic(() => import("./thread-tasks").then((m) => m.ThreadTaskDialog), { ssr: false });
 import { EventEditorDialog } from "@/app/calendar/components/event-editor";
 import { cn } from "@/lib/utils";
 
@@ -90,6 +96,7 @@ export function ThreadDisplay() {
   const actions = useThreadActions();
   const { data: thread, isLoading } = useCurrentThread(threadId);
   const [scheduling, setScheduling] = React.useState(false);
+  const [addingTask, setAddingTask] = React.useState(false);
 
   // Opening a thread marks it read (in the app and at the provider), once.
   const markedRef = React.useRef<string | null>(null);
@@ -224,6 +231,12 @@ export function ThreadDisplay() {
           disabled={!thread}
           onClick={() => setScheduling(true)}
         />
+        <ToolbarButton
+          icon={<ListPlus className="size-4" />}
+          hint="Add task"
+          disabled={!thread}
+          onClick={() => setAddingTask(true)}
+        />
         {mode === "snoozed" && thread?.snoozedUntil && (
           <span className="ml-1 inline-flex items-center gap-1 rounded-md bg-brand-soft px-1.5 py-0.5 text-[11px] font-medium text-brand">
             <AlarmClock className="size-3" />
@@ -317,6 +330,7 @@ export function ThreadDisplay() {
                   </>
                 )}
               </p>
+              <ThreadTaskChips threadId={thread.id} />
             </header>
             <div className="px-4 pb-3 sm:px-6">
               <ThreadInsights accountId={thread.accountId} threadId={thread.id} />
@@ -355,6 +369,7 @@ export function ThreadDisplay() {
           </div>
         </div>
       )}
+      {thread && addingTask && <ThreadTaskDialog threadId={thread.id} subject={thread.subject} open={addingTask} onOpenChange={setAddingTask} />}
       {thread && (
         <EventEditorDialog
           open={scheduling}
