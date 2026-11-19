@@ -1,12 +1,13 @@
 "use client";
 import React from "react";
 import Link from "next/link";
-import { CalendarDays, CalendarClock, Clock, Flag, Folder, History, Landmark, Mail, Repeat, Trash2, X, CircleDot, Tag } from "lucide-react";
+import { Bell, CalendarDays, CalendarClock, Clock, Flag, Folder, History, Landmark, Mail, Repeat, Trash2, X, CircleDot, Tag } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { ChipsInput } from "@/app/procurement/components/bits";
 import { dueInstant } from "@/lib/tasks/quick-add";
 import { describeRule, parseRule } from "@/lib/tasks/recurrence";
+import { REMINDER_OPTIONS } from "@/lib/tasks/reminders";
 import { cn } from "@/lib/utils";
 import { PRIORITIES, STATUSES, TaskCheck, formatDue } from "./bits";
 import { QuickAdd } from "./quick-add";
@@ -178,6 +179,29 @@ export function TaskDetail({ task, store, onClose, onOpen }: { task: Task | null
                   </option>
                 ))}
               </select>
+            </Row>
+            <Row icon={Bell} label="Reminder">
+              <select
+                className={field}
+                value={task.reminderMinutes === null ? "" : String(task.reminderMinutes)}
+                disabled={!task.dueDate}
+                onChange={(e) => update({ reminderMinutes: e.target.value === "" ? null : Number(e.target.value) })}
+              >
+                {REMINDER_OPTIONS.filter((o) => task.dueTime || o.value === null || o.value === -1 || o.value === 1440).map((o) => (
+                  <option key={String(o.value)} value={o.value === null ? "" : String(o.value)}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+              <p className="mt-1 text-[11px] text-muted-foreground">
+                {!task.dueDate
+                  ? "Set a due date to get a reminder"
+                  : task.remindAt
+                    ? `Reminds ${new Date(task.remindAt).toLocaleString(undefined, { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}`
+                    : task.reminderMinutes === -1
+                      ? "No reminder"
+                      : "Reminder time is set when you save"}
+              </p>
             </Row>
             <Row icon={Clock} label="Estimate">
               <select className={field} value={task.estimateMinutes ?? ""} onChange={(e) => update({ estimateMinutes: e.target.value ? Number(e.target.value) : null })}>

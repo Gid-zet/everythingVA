@@ -43,6 +43,10 @@ export const env = createEnv({
     SAM_GOV_API_KEY: z.string().min(1).optional(),
     SAM_GOV_MAX_REQUESTS: z.coerce.number().int().min(1).max(50).optional(),
     CRON_SECRET: z.string().min(16).optional(),
+    // Task reminders (Web Push). Generate with: npx web-push generate-vapid-keys
+    VAPID_PUBLIC_KEY: z.string().min(1).optional(),
+    VAPID_PRIVATE_KEY: z.string().min(1).optional(),
+    VAPID_SUBJECT: z.string().min(1).optional(),
   },
 
   /**
@@ -91,6 +95,9 @@ export const env = createEnv({
     SAM_GOV_API_KEY: process.env.SAM_GOV_API_KEY,
     SAM_GOV_MAX_REQUESTS: process.env.SAM_GOV_MAX_REQUESTS,
     CRON_SECRET: process.env.CRON_SECRET,
+    VAPID_PUBLIC_KEY: process.env.VAPID_PUBLIC_KEY,
+    VAPID_PRIVATE_KEY: process.env.VAPID_PRIVATE_KEY,
+    VAPID_SUBJECT: process.env.VAPID_SUBJECT,
     NEXT_PUBLIC_KINDE_CLIENT_ID: process.env.NEXT_PUBLIC_KINDE_CLIENT_ID,
     NEXT_PUBLIC_KINDE_ISSUER_URL: process.env.NEXT_PUBLIC_KINDE_ISSUER_URL,
     NEXT_PUBLIC_KINDE_SITE_URL: process.env.NEXT_PUBLIC_KINDE_SITE_URL,

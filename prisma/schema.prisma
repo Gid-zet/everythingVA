@@ -36,6 +36,9 @@ model User {
   taskCompletions      TaskCompletion[]
   achievements         UserAchievement[]
   productivitySettings ProductivitySettings?
+
+  pushSubscriptions    PushSubscription[]
+  notificationSettings NotificationSettings?
 }
 
 enum Role {
@@ -987,6 +990,11 @@ model Task {
   eventCalendarId String?
   eventStart      DateTime?
   opportunityId   String?
+  /// Minutes before the due time to remind; null = the user's default, -1 = no reminder.
+  reminderMinutes Int?
+  /// When the reminder is due (computed from the due date, time zone and settings).
+  remindAt        DateTime?
+  reminderSentAt  DateTime?
   createdAt       DateTime     @default(now())
   updatedAt       DateTime     @updatedAt
 
@@ -1007,6 +1015,7 @@ model Task {
   @@index([threadId])
   @@index([userId, eventId])
   @@index([opportunityId])
+  @@index([remindAt, reminderSentAt])
 }
 
 model TaskActivity {
@@ -1069,4 +1078,42 @@ model UserAchievement {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, key])
+}
+
+// ─── Notifications (task reminders) ─────────────────────────────────────────
+
+/// A browser/device that accepted push notifications (Web Push).
+model PushSubscription {
+  id         String    @id @default(cuid())
+  userId     String
+  endpoint   String    @unique
+  p256dh     String
+  auth       String
+  userAgent  String?
+  createdAt  DateTime  @default(now())
+  lastUsedAt DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model NotificationSettings {
+  userId                 String  @id
+  /// IANA time zone from the browser, e.g. "America/New_York".
+  timezone               String  @default("UTC")
+  pushEnabled            Boolean @default(true)
+  /// Default reminder for tasks with a due time, in minutes before.
+  defaultReminderMinutes Int     @default(30)
+  /// Local hour to remind about tasks that are due on a date without a time.
+  dateOnlyReminderHour   Int     @default(9)
+  digestEnabled          Boolean @default(true)
+  /// Local hour for the morning email digest.
+  digestHour             Int     @default(7)
+  /// Mail account the digest is sent from (and to). Null = the first connected one.
+  digestAccountId        String?
+  /// Local date (YYYY-MM-DD) of the last digest, so it's sent once a day.
+  lastDigestDate         String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
