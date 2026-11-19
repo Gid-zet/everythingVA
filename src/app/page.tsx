@@ -6,7 +6,8 @@ import { Check, KeyRound, LockKeyhole, Unplug } from "lucide-react";
 import { LoginLink, RegisterLink } from "@kinde-oss/kinde-auth-nextjs/components";
 
 import { getKindeServerSession } from "@/lib/kinde";
-import { Hero } from "@/components/landing/hero";
+import { FramedHero } from "@/components/landing/framed-hero";
+import { ModulesBento } from "@/components/landing/modules-bento";
 import { AskDemo, DraftDemo, OrganizerDemo, UnsubscribeDemo } from "@/components/landing/feature-demos";
 import { CalendarDemo } from "@/components/landing/calendar-demo";
 import { KeyboardDemo } from "@/components/landing/keyboard-demo";
@@ -47,6 +48,12 @@ const CardText = ({ children }: { children: React.ReactNode }) => (
   <p className="mt-1.5 max-w-[46ch] text-[14px] leading-relaxed text-[hsl(var(--muted-foreground))]">{children}</p>
 );
 
+// Pill buttons for the white canvases.
+const canvasPrimary =
+  "inline-flex h-12 items-center justify-center rounded-full bg-neutral-950 px-6 text-[15px] font-semibold text-white transition-all hover:bg-neutral-800 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-950/40 focus-visible:ring-offset-2";
+const canvasSecondary =
+  "inline-flex h-12 items-center justify-center rounded-full bg-neutral-100 px-6 text-[15px] font-semibold text-neutral-800 transition-colors hover:bg-neutral-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-950/30";
+
 const LandingPage = async () => {
   const { getUser } = getKindeServerSession();
   const user = await getUser();
@@ -63,9 +70,20 @@ const LandingPage = async () => {
     </>
   );
 
+  const heroCta = signedIn ? (
+    <Link href="/mail" className={canvasPrimary}>
+      Open everythingVA
+    </Link>
+  ) : (
+    <>
+      <RegisterLink className={canvasPrimary}>Get started free</RegisterLink>
+      <LoginLink className={canvasSecondary}>Sign in</LoginLink>
+    </>
+  );
+
   return (
     <div className={cn(display.variable, serif.variable, "dark landing min-h-screen overflow-x-hidden text-[hsl(var(--foreground))] antialiased")}>
-      <header className="sticky top-0 z-40 border-b border-white/[0.06] bg-black/60 backdrop-blur-xl">
+      <header className="sticky top-0 z-40 bg-black/85 backdrop-blur-xl">
         <nav className="mx-auto flex h-16 max-w-[1200px] items-center gap-8 px-5 sm:px-8">
           <Link href="/" className="flex items-center gap-2.5 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50" aria-label="EverythingVA home">
             <Image src="/logo.png" alt="" width={24} height={24} className="rounded-md invert" />
@@ -86,13 +104,13 @@ const LandingPage = async () => {
           </div>
           <div className="ml-auto flex items-center gap-2">
             {signedIn ? (
-              <Link href="/mail" className={cn(primaryBtn, "h-9 rounded-xl px-4 text-[13px]")}>
+              <Link href="/mail" className={cn(primaryBtn, "h-9 rounded-full px-4 text-[13px]")}>
                 Open inbox
               </Link>
             ) : (
               <>
                 <LoginLink className="hidden px-3 text-[14px] text-white/60 transition-colors hover:text-white sm:inline">Log in</LoginLink>
-                <RegisterLink className={cn(secondaryBtn, "h-9 rounded-xl px-4 text-[13px] text-white")}>Get started</RegisterLink>
+                <RegisterLink className={cn(primaryBtn, "h-9 rounded-full px-4 text-[13px]")}>Get started</RegisterLink>
               </>
             )}
           </div>
@@ -100,10 +118,11 @@ const LandingPage = async () => {
       </header>
 
       <main>
-        <Hero actions={cta} />
+        <FramedHero actions={heroCta} />
+        <ModulesBento />
 
         {/* Providers */}
-        <section aria-label="Works with" className="mx-auto max-w-[1200px] px-5 pb-24 sm:px-8">
+        <section aria-label="Works with" className="mx-auto max-w-[1200px] px-5 py-20 sm:px-8">
           <p className="text-center text-[14px] text-white/45">Works with the inbox you already have</p>
           <ul className="mx-auto mt-6 flex max-w-[760px] flex-wrap items-center justify-center gap-x-10 gap-y-4 text-[19px] font-medium tracking-[-0.02em] text-white/55">
             {["Gmail", "Google Workspace", "Outlook", "Microsoft 365", "iCloud", "IMAP"].map((p) => (
