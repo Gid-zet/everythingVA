@@ -44,31 +44,30 @@ export function LevelBadge({ level, className }: { level: number; className?: st
 }
 
 /** Compact card at the top of the tasks sidebar. */
+/** Sidebar streak card, styled like the one in the homepage product window. */
 export function ProgressCard({ data, href }: { data: Productivity | undefined; href: string }) {
   if (!data || !data.settings.enabled) return null;
   const { level, today, streak } = data;
+  const pct = Math.min(100, Math.round((today.done / Math.max(1, today.goal)) * 100));
   return (
-    <Link href={href} className="mx-2.5 mt-2.5 block rounded-xl border bg-background p-3 shadow-sm transition-colors hover:border-foreground/20">
-      <div className="flex items-center gap-2.5">
-        <LevelBadge level={level.level} className="size-8 text-sm" />
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-[13px] font-semibold leading-tight">{level.name}</p>
-          <p className="text-[11px] tabular-nums text-muted-foreground">{data.total.toLocaleString()} pts</p>
-        </div>
-        <span className={cn("inline-flex items-center gap-0.5 text-sm font-semibold tabular-nums", streak.current ? "text-orange-600 dark:text-orange-400" : "text-muted-foreground")} title={`${streak.current}-day streak`}>
-          <Flame className="size-4" />
-          {streak.current}
+    <Link href={href} className="mx-2.5 mt-2.5 block rounded-xl bg-muted p-3 transition-colors hover:bg-muted/70">
+      <p className="flex items-center gap-1.5 text-[13px] font-semibold">
+        <Flame className={cn("size-4", streak.current ? "text-orange-500" : "text-muted-foreground")} />
+        {streak.current}-day streak
+        <span className="ml-auto inline-flex items-center gap-1 text-[11px] font-medium text-muted-foreground">
+          <LevelBadge level={level.level} className="size-4 text-[9px]" />
+          {level.name}
         </span>
+      </p>
+      <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-foreground/10">
+        <div className="h-full rounded-full bg-foreground transition-[width] duration-700" style={{ width: `${pct}%` }} />
       </div>
-      <div className="mt-2.5 h-1.5 overflow-hidden rounded-full bg-[var(--viz-track)]">
-        <div className="h-full rounded-full bg-[var(--viz-1)] transition-[width] duration-700" style={{ width: `${Math.round(level.progress * 100)}%` }} />
-      </div>
-      <div className="mt-1.5 flex justify-between text-[11px] text-muted-foreground">
+      <p className="mt-1.5 flex justify-between text-[11px] text-muted-foreground">
         <span>
-          Today <span className="font-medium tabular-nums text-foreground">{today.done}</span>/{today.goal}
+          <span className="font-medium tabular-nums text-foreground">{today.done}</span> of {today.goal} done today
         </span>
-        {level.next && <span className="tabular-nums">{(level.next - data.total).toLocaleString()} to {level.nextName}</span>}
-      </div>
+        <span className="tabular-nums">{data.total.toLocaleString()} pts</span>
+      </p>
     </Link>
   );
 }

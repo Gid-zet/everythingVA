@@ -5,7 +5,8 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { ArrowRight, Bell, CalendarClock, CalendarDays, CalendarRange, CheckCircle2, Flame, Hash, Inbox, LayoutGrid, List, ListTodo, Loader2, Mail, Plus, Tag, Trophy, X } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { PageBanner, type BannerTone } from "@/components/page-banner";
+import { AnimatePresence, motion } from "framer-motion";
+import { Greeting, Segmented, TasksHeader, WeekStrip } from "./tasks-header";
 import { addDays } from "@/lib/tasks/recurrence";
 import { counts, inboxView, isOpen, labelView, projectView, todayView, upcomingView, compareTasks, type Group } from "@/lib/tasks/views";
 import { Board } from "./board";
@@ -164,70 +165,49 @@ function TasksAppInner({ store }: { store: TaskStore }) {
     <div className="flex min-h-screen bg-background">
       <Sidebar store={store} view={view} counts={c} labels={labels} productivity={productivity} />
 
-      <main className="min-w-0 flex-1">
+      <main className="min-w-0 flex-1 bg-neutral-50 dark:bg-background">
         <MobileNav view={view} projects={store.projects} />
         <div className={cn("mx-auto px-4 py-6 sm:px-8 sm:py-8", layout === "board" && boardAllowed ? "max-w-none" : "max-w-3xl")}>
-          <PageBanner
-            tone={VIEW_TONE[view.kind]}
-            icon={VIEW_ICON[view.kind]}
-            eyebrow="Tasks"
+          <TasksHeader
+            label={view.kind === "today" ? new Date().toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" }) : "Tasks"}
             title={title}
-            description={subtitle}
-            live={store.updatedAt ? { updatedAt: store.updatedAt, refreshing: store.refreshing } : null}
-            stats={
-              view.kind === "progress" || view.kind === "reminders"
+            subtitle={view.kind === "today" ? undefined : subtitle}
+            updatedAt={store.updatedAt}
+            refreshing={store.refreshing}
+            chips={
+              view.kind === "today" || view.kind === "day" || view.kind === "progress" || view.kind === "reminders"
                 ? undefined
                 : [
-                    { label: view.kind === "completed" ? "Completed" : "In view", value: total },
-                    { label: "Overdue", value: c.overdue },
+                    { label: view.kind === "completed" ? "completed" : "in view", value: total, tone: "bg-muted text-foreground" },
+                    ...(c.overdue ? [{ label: "overdue", value: c.overdue, tone: "bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300" }] : []),
                     ...(productivity?.settings.enabled
                       ? [
-                          { label: "Done today", value: `${productivity.today.done}/${productivity.today.goal}` },
-                          { label: "Streak", value: productivity.streak.current },
+                          { label: "done today", value: `${productivity.today.done}/${productivity.today.goal}`, tone: "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300" },
+                          { label: "day streak", value: productivity.streak.current, tone: "bg-orange-100 text-orange-700 dark:bg-orange-500/15 dark:text-orange-300" },
                         ]
                       : []),
                   ]
             }
-            {...(view.kind === "today" || view.kind === "day"
-              ? {
-                  children: (
-                    <TodayHeader
-                      tasks={store.tasks}
-                      today={today}
-                      selected={view.kind === "day" ? view.date : today}
-                      base={base}
-                      greeting={view.kind === "today"}
-                      doneToday={productivity?.today.done ?? null}
-                    />
-                  ),
-                }
-              : {})}
             actions={
               boardAllowed ? (
-                <div className="flex rounded-xl bg-white/15 p-0.5 ring-1 ring-inset ring-white/25" role="group" aria-label="Layout">
-                  {(
-                    [
-                      ["list", List, "List"],
-                      ["board", LayoutGrid, "Board"],
-                    ] as const
-                  ).map(([id, Icon, label]) => (
-                    <button
-                      key={id}
-                      onClick={() => setParam({ layout: id === "list" ? null : "board" })}
-                      aria-pressed={layout === id}
-                      className={cn(
-                        "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium",
-                        layout === id ? "bg-white text-foreground shadow-sm" : "text-white/85 hover:text-white",
-                      )}
-                    >
-                      <Icon className="size-3.5" />
-                      {label}
-                    </button>
-                  ))}
-                </div>
+                <Segmented
+                  value={layout}
+                  onChange={(v) => setParam({ layout: v === "list" ? null : "board" })}
+                  options={[
+                    { id: "list", label: "List", icon: List },
+                    { id: "board", label: "Board", icon: LayoutGrid },
+                  ]}
+                />
               ) : undefined
             }
-          />
+          >
+            {(view.kind === "today" || view.kind === "day") && (
+              <>
+                <WeekStrip tasks={store.tasks} today={today} selected={view.kind === "day" ? view.date : today} base={base} />
+                {view.kind === "today" && <Greeting tasks={store.tasks} today={today} doneToday={productivity?.settings.enabled ? productivity.today.done : null} />}
+              </>
+            )}
+          </TasksHeader>
 
           {view.kind === "today" && (
             <TodayActions
@@ -264,28 +244,42 @@ function TasksAppInner({ store }: { store: TaskStore }) {
                 g.tasks.length || (view.kind === "upcoming" && g.key !== "later") ? (
                   <section key={g.key}>
                     {g.label && (
-                      <h2 className={cn("mb-1 flex items-center gap-2 border-b pb-1.5 text-xs font-semibold", g.key === "overdue" && "text-[var(--viz-critical)]")}>
+                      <h2 className={cn("mb-2 flex items-center gap-2 text-[13px] font-semibold tracking-[-0.01em]", g.key === "overdue" && "text-[var(--viz-critical)]")}>
                         {g.label}
-                        <span className="font-normal text-muted-foreground">{g.tasks.length || ""}</span>
+                        {g.tasks.length > 0 && (
+                          <span className={cn("rounded-full px-1.5 text-[11px] font-medium tabular-nums", g.key === "overdue" ? "bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300" : "bg-muted text-muted-foreground")}>
+                            {g.tasks.length}
+                          </span>
+                        )}
                       </h2>
                     )}
                     {g.tasks.length ? (
-                      <div className="-mx-2.5">
-                        {g.tasks.map((t) => (
-                          <TaskRow
-                            key={t.id}
-                            task={t}
-                            today={today}
-                            project={t.projectId ? projectsById.get(t.projectId) : undefined}
-                            showProject={view.kind !== "project"}
-                            selected={t.id === openId}
-                            onOpen={() => open(t.id)}
-                            onToggle={() => toggle(t)}
-                          />
-                        ))}
-                      </div>
+                      <ul className="space-y-1.5">
+                        <AnimatePresence initial={false}>
+                          {g.tasks.map((t) => (
+                            <motion.li
+                              key={t.id}
+                              layout
+                              initial={{ opacity: 0, y: -6, scale: 0.98 }}
+                              animate={{ opacity: 1, y: 0, scale: 1 }}
+                              exit={{ opacity: 0, x: 40, height: 0, marginTop: 0, transition: { duration: 0.3 } }}
+                              transition={{ type: "spring", stiffness: 380, damping: 32 }}
+                            >
+                              <TaskRow
+                                task={t}
+                                today={today}
+                                project={t.projectId ? projectsById.get(t.projectId) : undefined}
+                                showProject={view.kind !== "project"}
+                                selected={t.id === openId}
+                                onOpen={() => open(t.id)}
+                                onToggle={() => toggle(t)}
+                              />
+                            </motion.li>
+                          ))}
+                        </AnimatePresence>
+                      </ul>
                     ) : (
-                      <p className="py-1 text-xs text-muted-foreground/70">Nothing scheduled</p>
+                      <p className="rounded-xl border border-dashed px-3 py-2 text-xs text-muted-foreground/70">Nothing scheduled</p>
                     )}
                   </section>
                 ) : null,
@@ -296,113 +290,6 @@ function TasksAppInner({ store }: { store: TaskStore }) {
       </main>
 
       <TaskDetail task={openTask} store={store} onClose={() => open(null)} onOpen={open} />
-    </div>
-  );
-}
-
-const VIEW_TONE: Record<View["kind"], BannerTone> = {
-  today: "indigo",
-  inbox: "ocean",
-  upcoming: "violet",
-  all: "slate",
-  completed: "emerald",
-  progress: "sunset",
-  reminders: "violet",
-  day: "indigo",
-  project: "ocean",
-  label: "rose",
-};
-const VIEW_ICON: Record<View["kind"], React.ElementType> = {
-  today: CalendarDays,
-  inbox: Inbox,
-  upcoming: CalendarRange,
-  all: ListTodo,
-  completed: CheckCircle2,
-  progress: Trophy,
-  reminders: Bell,
-  day: CalendarDays,
-  project: Hash,
-  label: Tag,
-};
-
-/**
- * Woday-style day header: a greeting sentence with coloured chips and a
- * week strip (Mon–Sun) to jump between days; dots mark days with tasks due.
- */
-function TodayHeader({
-  tasks,
-  today,
-  selected,
-  base,
-  greeting,
-  doneToday,
-}: {
-  tasks: Task[];
-  today: string;
-  selected: string;
-  base: string;
-  greeting: boolean;
-  doneToday: number | null;
-}) {
-  const open = tasks.filter(isOpen);
-  const dueOn = (d: string) => open.filter((t) => t.dueDate === d).length;
-  const overdue = open.filter((t) => t.dueDate && t.dueDate < today).length;
-  const dow = new Date(`${selected}T00:00:00Z`).getUTCDay();
-  const monday = addDays(selected, -((dow + 6) % 7));
-  const week = Array.from({ length: 7 }, (_, i) => addDays(monday, i));
-  const hour = new Date().getHours();
-  const hello = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
-  const chip = "rounded-lg px-1.5 py-0.5 font-semibold";
-  return (
-    <div className="mt-4">
-      {greeting && (
-        <p className="max-w-xl text-[15px] leading-relaxed text-white/85">
-          {hello}. You have <span className={cn(chip, "bg-white/20 text-white")}>{dueOn(today)} due today</span>
-          {overdue > 0 && (
-            <>
-              , <span className={cn(chip, "bg-rose-400/30 text-white")}>{overdue} overdue</span>
-            </>
-          )}
-          {doneToday !== null && (
-            <>
-              {" "}
-              and <span className={cn(chip, "bg-emerald-400/30 text-white")}>{doneToday} done</span> so far
-            </>
-          )}
-          .
-        </p>
-      )}
-      <div className="mt-4 flex items-center gap-1">
-        <Link href={`${base}?view=day&date=${addDays(monday, -7)}`} className="rounded-lg px-1.5 py-2 text-white/70 hover:bg-white/15 hover:text-white" aria-label="Previous week">
-          ‹
-        </Link>
-        <div className="grid flex-1 grid-cols-7 gap-1">
-          {week.map((d) => {
-            const n = dueOn(d);
-            const isSel = d === selected;
-            const isToday = d === today;
-            const wd = new Date(`${d}T00:00:00Z`).toLocaleDateString(undefined, { weekday: "short", timeZone: "UTC" });
-            return (
-              <Link
-                key={d}
-                href={isToday ? `${base}?view=today` : `${base}?view=day&date=${d}`}
-                aria-current={isSel ? "date" : undefined}
-                className={cn(
-                  "flex flex-col items-center rounded-xl py-1.5 text-[11px] transition-colors",
-                  isSel ? "bg-white text-neutral-900 shadow-sm" : "text-white/80 hover:bg-white/15",
-                )}
-              >
-                <span className={cn(isToday && !isSel && "font-semibold text-white")}>{wd}</span>
-                <span className="text-[15px] font-semibold tabular-nums">{Number(d.slice(8))}</span>
-                <span className={cn("mt-0.5 size-1 rounded-full", n ? (isSel ? "bg-neutral-900" : "bg-white") : "bg-transparent")} aria-label={n ? `${n} due` : undefined} />
-              </Link>
-            );
-          })}
-        </div>
-        <Link href={`${base}?view=day&date=${addDays(monday, 7)}`} className="rounded-lg px-1.5 py-2 text-white/70 hover:bg-white/15 hover:text-white" aria-label="Next week">
-          ›
-        </Link>
-      </div>
     </div>
   );
 }
@@ -422,11 +309,11 @@ function TodayActions({
   onReschedule: (tasks: Task[]) => void;
 }) {
   const card =
-    "group flex items-center gap-3 rounded-2xl border bg-gradient-to-br to-transparent p-3 text-left transition-all hover:-translate-y-0.5 hover:shadow-md disabled:pointer-events-none disabled:opacity-50";
+    "group flex items-center gap-3 rounded-2xl bg-card p-3 text-left ring-1 ring-border transition-all hover:-translate-y-0.5 hover:shadow-sm hover:ring-foreground/20 disabled:pointer-events-none disabled:opacity-50";
   const chip = "flex size-8 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br text-white shadow-sm";
   return (
     <div className="mb-6 grid gap-2.5 sm:grid-cols-2">
-      <button type="button" className={cn(card, "from-rose-500/[0.08]")} disabled={!overdue.length} onClick={() => onReschedule(overdue)}>
+      <button type="button" className={card} disabled={!overdue.length} onClick={() => onReschedule(overdue)}>
         <span className={cn(chip, "from-rose-500 to-pink-600")}>
           <Flame className="size-4" />
         </span>
@@ -435,7 +322,7 @@ function TodayActions({
           <span className="block text-[11px] text-muted-foreground">Keeps their times</span>
         </span>
       </button>
-      <Link href={`${base}?view=inbox`} className={cn(card, "from-sky-500/[0.08]")}>
+      <Link href={`${base}?view=inbox`} className={card}>
         <span className={cn(chip, "from-sky-500 to-cyan-600")}>
           <Inbox className="size-4" />
         </span>
@@ -444,7 +331,7 @@ function TodayActions({
           <span className="block text-[11px] text-muted-foreground">{inbox ? `${inbox} without a project` : "Inbox zero"}</span>
         </span>
       </Link>
-      <Link href={`${base}?view=upcoming`} className={cn(card, "from-violet-500/[0.08]")}>
+      <Link href={`${base}?view=upcoming`} className={card}>
         <span className={cn(chip, "from-violet-500 to-fuchsia-600")}>
           <CalendarClock className="size-4" />
         </span>
@@ -453,7 +340,7 @@ function TodayActions({
           <span className="block text-[11px] text-muted-foreground">{upcoming} due in the next 14 days</span>
         </span>
       </Link>
-      <Link href="/mail" className={cn(card, "from-emerald-500/[0.08]")}>
+      <Link href="/mail" className={card}>
         <span className={cn(chip, "from-emerald-500 to-teal-600")}>
           <Mail className="size-4" />
         </span>
@@ -513,7 +400,7 @@ function NavLink({
       href={href}
       className={cn(
         "flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-sm transition-colors",
-        active ? "bg-background font-medium text-foreground shadow-sm ring-1 ring-border" : "text-muted-foreground hover:bg-background/60 hover:text-foreground",
+        active ? "bg-muted font-semibold text-foreground" : "text-muted-foreground hover:bg-muted/60 hover:text-foreground",
       )}
     >
       {chip ? (
@@ -545,7 +432,7 @@ function Sidebar({
   const [name, setName] = React.useState("");
   const is = (k: View["kind"]) => view.kind === k;
   return (
-    <aside className="hidden w-64 shrink-0 border-r bg-sidebar md:block">
+    <aside className="hidden w-64 shrink-0 border-r bg-card md:block">
       <div className="sticky top-0 flex max-h-screen flex-col overflow-y-auto">
         <div className="flex items-center justify-between border-b px-4 py-3.5">
           <div className="flex items-center gap-2">
