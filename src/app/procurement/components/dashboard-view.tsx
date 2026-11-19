@@ -59,7 +59,7 @@ function Panel({
   tone?: string;
 }) {
   return (
-    <section className={cn("flex min-w-0 flex-col rounded-2xl border bg-card shadow-[0_1px_2px_rgba(0,0,0,0.03)]", className)}>
+    <section className={cn("flex min-w-0 flex-col rounded-2xl border bg-card", className)}>
       <header className="flex items-start justify-between gap-3 px-5 pb-3 pt-4">
         <div className="flex min-w-0 items-start gap-2.5">
           {Icon && (
@@ -139,7 +139,7 @@ function StatTile({
       {foot && <div className="mt-2 text-xs text-muted-foreground">{foot}</div>}
     </>
   );
-  const cls = cn("relative block overflow-hidden rounded-2xl border bg-card bg-gradient-to-br to-transparent p-4 shadow-[0_1px_2px_rgba(0,0,0,0.03)] transition-all", t.wash);
+  const cls = cn("relative block overflow-hidden rounded-2xl border bg-card bg-gradient-to-br to-transparent p-4 transition-all", t.wash);
   return href ? (
     <Link href={href} className={cn(cls, "hover:-translate-y-0.5 hover:shadow-md")}>
       {body}
@@ -225,7 +225,7 @@ export function DashboardView({
               )}
             </div>
             <p className="mt-4 text-[11px] font-medium uppercase tracking-[0.16em] text-white/70">Procurement · {o.workspace.name}</p>
-            <h1 className="mt-1 text-3xl font-semibold tracking-tight sm:text-4xl">Pipeline overview</h1>
+            <h1 className="mt-1 font-tight text-3xl font-bold tracking-[-0.04em] sm:text-[44px]">Pipeline overview</h1>
             <div className="mt-3 flex flex-wrap gap-2 text-[11px]">
               {[
                 { on: !!lastRun && !lastRun.error, label: lastRun ? `Last search ${formatDate(lastRun.startedAt, true)}` : "Not searched yet" },
@@ -279,7 +279,7 @@ export function DashboardView({
 
       {/* Hero + readiness */}
       <div className="grid gap-5 lg:grid-cols-12">
-        <section className="relative overflow-hidden rounded-2xl border bg-card p-5 shadow-[0_1px_2px_rgba(0,0,0,0.03)] lg:col-span-8">
+        <section className="relative overflow-hidden rounded-2xl border bg-card p-5 lg:col-span-8">
           <div
             className="pointer-events-none absolute inset-x-0 top-0 h-40 opacity-90 [background:radial-gradient(55%_100%_at_15%_0%,rgba(59,130,246,0.14),transparent),radial-gradient(45%_90%_at_85%_0%,rgba(168,85,247,0.12),transparent)]"
             aria-hidden

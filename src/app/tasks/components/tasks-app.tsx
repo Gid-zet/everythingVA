@@ -27,12 +27,15 @@ const ProgressView = dynamic(() => import("./progress").then((m) => m.ProgressVi
 });
 import { localToday, type CreateInput, type Project, type Task, type TaskStore } from "./store";
 
-type View = { kind: "inbox" | "today" | "upcoming" | "all" | "completed" | "progress" | "reminders" } | { kind: "project"; id: string } | { kind: "label"; label: string };
+type View =
+  | { kind: "inbox" | "today" | "upcoming" | "all" | "completed" | "progress" | "reminders" }
+  | { kind: "day"; date: string } | { kind: "project"; id: string } | { kind: "label"; label: string };
 
 function readView(p: URLSearchParams): View {
   const v = p.get("view");
   if (v === "project" && p.get("id")) return { kind: "project", id: p.get("id")! };
   if (v === "label" && p.get("label")) return { kind: "label", label: p.get("label")! };
+  if (v === "day" && /^\d{4}-\d{2}-\d{2}$/.test(p.get("date") ?? "")) return { kind: "day", date: p.get("date")! };
   if (v === "inbox" || v === "upcoming" || v === "all" || v === "completed" || v === "progress" || v === "reminders") return { kind: v };
   return { kind: "today" };
 }
@@ -131,6 +134,11 @@ function TasksAppInner({ store }: { store: TaskStore }) {
     subtitle = "Last 14 days";
     const done = store.tasks.filter((t) => !isOpen(t)).sort((a, b) => String(b.completedAt ?? "").localeCompare(String(a.completedAt ?? "")));
     groups = [{ key: "done", label: "", tasks: done }];
+  } else if (view.kind === "day") {
+    title = formatDayHeading(view.date, today).replace(/^Tomorrow · /, "");
+    subtitle = view.date === addDays(today, 1) ? "Tomorrow" : view.date < today ? "Past day" : undefined;
+    groups = [{ key: view.date, label: "", tasks: store.tasks.filter((t) => isOpen(t) && t.dueDate === view.date).sort(compareTasks) }];
+    defaults = { dueDate: view.date };
   } else if (view.kind === "reminders") {
     title = "Reminders";
     subtitle = "Push notifications before tasks are due, and a morning email digest";
@@ -180,6 +188,20 @@ function TasksAppInner({ store }: { store: TaskStore }) {
                       : []),
                   ]
             }
+            {...(view.kind === "today" || view.kind === "day"
+              ? {
+                  children: (
+                    <TodayHeader
+                      tasks={store.tasks}
+                      today={today}
+                      selected={view.kind === "day" ? view.date : today}
+                      base={base}
+                      greeting={view.kind === "today"}
+                      doneToday={productivity?.today.done ?? null}
+                    />
+                  ),
+                }
+              : {})}
             actions={
               boardAllowed ? (
                 <div className="flex rounded-xl bg-white/15 p-0.5 ring-1 ring-inset ring-white/25" role="group" aria-label="Layout">
@@ -286,6 +308,7 @@ const VIEW_TONE: Record<View["kind"], BannerTone> = {
   completed: "emerald",
   progress: "sunset",
   reminders: "violet",
+  day: "indigo",
   project: "ocean",
   label: "rose",
 };
@@ -297,9 +320,92 @@ const VIEW_ICON: Record<View["kind"], React.ElementType> = {
   completed: CheckCircle2,
   progress: Trophy,
   reminders: Bell,
+  day: CalendarDays,
   project: Hash,
   label: Tag,
 };
+
+/**
+ * Woday-style day header: a greeting sentence with coloured chips and a
+ * week strip (Mon–Sun) to jump between days; dots mark days with tasks due.
+ */
+function TodayHeader({
+  tasks,
+  today,
+  selected,
+  base,
+  greeting,
+  doneToday,
+}: {
+  tasks: Task[];
+  today: string;
+  selected: string;
+  base: string;
+  greeting: boolean;
+  doneToday: number | null;
+}) {
+  const open = tasks.filter(isOpen);
+  const dueOn = (d: string) => open.filter((t) => t.dueDate === d).length;
+  const overdue = open.filter((t) => t.dueDate && t.dueDate < today).length;
+  const dow = new Date(`${selected}T00:00:00Z`).getUTCDay();
+  const monday = addDays(selected, -((dow + 6) % 7));
+  const week = Array.from({ length: 7 }, (_, i) => addDays(monday, i));
+  const hour = new Date().getHours();
+  const hello = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
+  const chip = "rounded-lg px-1.5 py-0.5 font-semibold";
+  return (
+    <div className="mt-4">
+      {greeting && (
+        <p className="max-w-xl text-[15px] leading-relaxed text-white/85">
+          {hello}. You have <span className={cn(chip, "bg-white/20 text-white")}>{dueOn(today)} due today</span>
+          {overdue > 0 && (
+            <>
+              , <span className={cn(chip, "bg-rose-400/30 text-white")}>{overdue} overdue</span>
+            </>
+          )}
+          {doneToday !== null && (
+            <>
+              {" "}
+              and <span className={cn(chip, "bg-emerald-400/30 text-white")}>{doneToday} done</span> so far
+            </>
+          )}
+          .
+        </p>
+      )}
+      <div className="mt-4 flex items-center gap-1">
+        <Link href={`${base}?view=day&date=${addDays(monday, -7)}`} className="rounded-lg px-1.5 py-2 text-white/70 hover:bg-white/15 hover:text-white" aria-label="Previous week">
+          ‹
+        </Link>
+        <div className="grid flex-1 grid-cols-7 gap-1">
+          {week.map((d) => {
+            const n = dueOn(d);
+            const isSel = d === selected;
+            const isToday = d === today;
+            const wd = new Date(`${d}T00:00:00Z`).toLocaleDateString(undefined, { weekday: "short", timeZone: "UTC" });
+            return (
+              <Link
+                key={d}
+                href={isToday ? `${base}?view=today` : `${base}?view=day&date=${d}`}
+                aria-current={isSel ? "date" : undefined}
+                className={cn(
+                  "flex flex-col items-center rounded-xl py-1.5 text-[11px] transition-colors",
+                  isSel ? "bg-white text-neutral-900 shadow-sm" : "text-white/80 hover:bg-white/15",
+                )}
+              >
+                <span className={cn(isToday && !isSel && "font-semibold text-white")}>{wd}</span>
+                <span className="text-[15px] font-semibold tabular-nums">{Number(d.slice(8))}</span>
+                <span className={cn("mt-0.5 size-1 rounded-full", n ? (isSel ? "bg-neutral-900" : "bg-white") : "bg-transparent")} aria-label={n ? `${n} due` : undefined} />
+              </Link>
+            );
+          })}
+        </div>
+        <Link href={`${base}?view=day&date=${addDays(monday, 7)}`} className="rounded-lg px-1.5 py-2 text-white/70 hover:bg-white/15 hover:text-white" aria-label="Next week">
+          ›
+        </Link>
+      </div>
+    </div>
+  );
+}
 
 /** One-click actions for the day (real changes, or straight to the work). */
 function TodayActions({
@@ -373,6 +479,7 @@ function Empty({ view }: { view: View }) {
     label: ["No open tasks with this label", ""],
     progress: ["", ""],
     reminders: ["", ""],
+    day: ["Nothing due this day", "Add one above, or pick another day in the strip."],
   }[view.kind];
   return (
     <div className="flex flex-col items-center rounded-2xl border border-dashed px-6 py-14 text-center">

@@ -60,7 +60,7 @@ export function PageBanner({
               {eyebrow && <span className="text-[11px] font-medium uppercase tracking-[0.16em] text-white/75">{eyebrow}</span>}
             </div>
           )}
-          <h1 className="flex items-center gap-2.5 text-2xl font-semibold tracking-tight sm:text-3xl">
+          <h1 className="flex items-center gap-2.5 font-tight text-2xl font-bold tracking-[-0.035em] sm:text-[34px]">
             {Icon && (
               <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-white/15 ring-1 ring-inset ring-white/25">
                 <Icon className="size-5" />
