@@ -8,6 +8,7 @@ import { LoginLink, RegisterLink } from "@kinde-oss/kinde-auth-nextjs/components
 import { getKindeServerSession } from "@/lib/kinde";
 import { FramedHero } from "@/components/landing/framed-hero";
 import { ModulesBento } from "@/components/landing/modules-bento";
+import { Marquee, ScrollEffects } from "@/components/landing/scroll-effects";
 import { AskDemo, DraftDemo, OrganizerDemo, UnsubscribeDemo } from "@/components/landing/feature-demos";
 import { CalendarDemo } from "@/components/landing/calendar-demo";
 import { KeyboardDemo } from "@/components/landing/keyboard-demo";
@@ -26,6 +27,7 @@ const secondaryBtn =
 function Heading({ children, dim, className }: { children: React.ReactNode; dim?: React.ReactNode; className?: string }) {
   return (
     <h2
+      data-reveal
       className={cn(
         "max-w-[18ch] text-balance font-sans text-[clamp(2.25rem,5vw,3.5rem)] font-normal leading-[1.05] tracking-[-0.045em]",
         className,
@@ -118,17 +120,17 @@ const LandingPage = async () => {
       </header>
 
       <main>
+        <ScrollEffects />
         <FramedHero actions={heroCta} />
         <ModulesBento />
 
         {/* Providers */}
         <section aria-label="Works with" className="mx-auto max-w-[1200px] px-5 py-20 sm:px-8">
           <p className="text-center text-[14px] text-white/45">Works with the inbox you already have</p>
-          <ul className="mx-auto mt-6 flex max-w-[760px] flex-wrap items-center justify-center gap-x-10 gap-y-4 text-[19px] font-medium tracking-[-0.02em] text-white/55">
-            {["Gmail", "Google Workspace", "Outlook", "Microsoft 365", "iCloud", "IMAP"].map((p) => (
-              <li key={p}>{p}</li>
-            ))}
-          </ul>
+          <Marquee
+            items={["Gmail", "Google Workspace", "Outlook", "Microsoft 365", "iCloud", "IMAP"]}
+            className="mx-auto mt-6 max-w-[900px] overflow-hidden text-[22px] font-medium tracking-[-0.02em] text-white/55"
+          />
         </section>
 
         <div className="hairline-x mx-auto max-w-[1200px]" />

@@ -273,3 +273,30 @@
 }
 .confetti-piece { animation-name: confetti-fall; animation-timing-function: cubic-bezier(0.2, 0.6, 0.4, 1); animation-fill-mode: forwards; }
 @media (prefers-reduced-motion: reduce) { .confetti-piece { display: none; } }
+
+/* Homepage scroll reveals (src/components/landing/scroll-effects.tsx). */
+.landing.reveal-ready .glow-card,
+.landing.reveal-ready [data-reveal] {
+  opacity: 0;
+  transform: translateY(28px) scale(0.985);
+  filter: blur(6px);
+  transition:
+    opacity 0.8s cubic-bezier(0.22, 1, 0.36, 1) var(--reveal-delay, 0ms),
+    transform 0.8s cubic-bezier(0.22, 1, 0.36, 1) var(--reveal-delay, 0ms),
+    filter 0.8s cubic-bezier(0.22, 1, 0.36, 1) var(--reveal-delay, 0ms);
+}
+.landing.reveal-ready .glow-card.revealed,
+.landing.reveal-ready [data-reveal].revealed {
+  opacity: 1;
+  transform: none;
+  filter: none;
+}
+
+/* Endless marquee */
+@keyframes marquee {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+.marquee-track { animation: marquee 28s linear infinite; }
+.marquee-track:hover { animation-play-state: paused; }
+@media (prefers-reduced-motion: reduce) { .marquee-track { animation: none; } }
