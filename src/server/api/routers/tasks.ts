@@ -5,6 +5,15 @@ import { createTRPCRouter, protectedProcedure } from "@/server/api/trpc";
 import { AI_RETRIES, chatModel, isAiConfigured } from "@/server/ai/provider";
 import { addDays, describeRule, nextDateAfter, parseRule, toDate } from "@/lib/tasks/recurrence";
 import { productivity, recordCompletion, undoCompletion, type Reward } from "@/server/tasks/rewards";
+import {
+  getNotificationSettings,
+  pushConfigured,
+  sendDigest,
+  sendPush,
+  syncAllReminders,
+  syncReminder,
+} from "@/server/tasks/notifications";
+import { isValidTimeZone, zonedParts } from "@/lib/tasks/reminders";
 
 const status = z.enum(["backlog", "todo", "in_progress", "done", "canceled"]);
 const priority = z.enum(["none", "low", "medium", "high", "urgent"]);
@@ -35,6 +44,8 @@ const taskSelect = {
   eventCalendarId: true,
   eventStart: true,
   opportunityId: true,
+  reminderMinutes: true,
+  remindAt: true,
   createdAt: true,
   updatedAt: true,
   thread: { select: { id: true, subject: true, accountId: true } },
@@ -149,6 +160,7 @@ export const tasksRouter = createTRPCRouter({
         eventCalendarId: z.string().max(200).optional(),
         eventStart: z.coerce.date().optional(),
         opportunityId: z.string().optional(),
+        reminderMinutes: z.number().int().min(-1).max(10_080).nullish(),
       }),
     )
     .mutation(async ({ ctx, input }) => {
@@ -190,6 +202,7 @@ export const tasksRouter = createTRPCRouter({
             },
             select: taskSelect,
           });
+          await syncReminder(ctx.db, userId, task.id);
           await log(
             ctx.db,
             task.id,
@@ -230,6 +243,7 @@ export const tasksRouter = createTRPCRouter({
         dueAt: z.coerce.date().nullish(),
         estimateMinutes: z.number().int().min(1).max(10_000).nullish(),
         recurrence: z.string().max(100).nullish(),
+        reminderMinutes: z.number().int().min(-1).max(10_080).nullish(),
       }),
     )
     .mutation(async ({ ctx, input }) => {
@@ -282,6 +296,7 @@ export const tasksRouter = createTRPCRouter({
       } else if (rest.status && rest.status !== "done" && before.status === "done") {
         await undoCompletion(ctx.db, userId, id);
       }
+      await syncReminder(ctx.db, userId, id);
       return { ...task, reward };
     }),
 
@@ -322,6 +337,7 @@ export const tasksRouter = createTRPCRouter({
       } else if (input.status && input.status !== "done" && task.status === "done") {
         await undoCompletion(ctx.db, userId, task.id);
       }
+      await syncReminder(ctx.db, userId, task.id);
       return { ...updated, reward };
     }),
 
@@ -400,6 +416,93 @@ export const tasksRouter = createTRPCRouter({
         update: { ...input, daysOff: Array.from(new Set(input.daysOff)) },
       }),
     ),
+
+  // ── Reminders and notifications ──────────────────────────────────────
+  notifications: protectedProcedure.query(async ({ ctx }) => {
+    const [settings, devices, accounts] = await Promise.all([
+      getNotificationSettings(ctx.db, ctx.auth.id),
+      ctx.db.pushSubscription.findMany({ where: { userId: ctx.auth.id }, orderBy: { createdAt: "desc" }, select: { id: true, endpoint: true, userAgent: true, createdAt: true, lastUsedAt: true } }),
+      ctx.db.account.findMany({ where: { userId: ctx.auth.id }, select: { id: true, emailAddress: true } }),
+    ]);
+    return { settings, devices, accounts, pushConfigured: pushConfigured(), vapidPublicKey: process.env.VAPID_PUBLIC_KEY ?? null };
+  }),
+
+  /** The browser reports its time zone; reminders follow it. */
+  syncTimezone: protectedProcedure.input(z.object({ timezone: z.string().max(100) })).mutation(async ({ ctx, input }) => {
+    if (!isValidTimeZone(input.timezone)) return { changed: false };
+    const current = await ctx.db.notificationSettings.findUnique({ where: { userId: ctx.auth.id } });
+    if (current?.timezone === input.timezone) return { changed: false };
+    await ctx.db.notificationSettings.upsert({
+      where: { userId: ctx.auth.id },
+      create: { userId: ctx.auth.id, timezone: input.timezone },
+      update: { timezone: input.timezone },
+    });
+    await syncAllReminders(ctx.db, ctx.auth.id);
+    return { changed: true };
+  }),
+
+  saveNotificationSettings: protectedProcedure
+    .input(
+      z.object({
+        pushEnabled: z.boolean(),
+        defaultReminderMinutes: z.number().int().min(0).max(10_080),
+        dateOnlyReminderHour: z.number().int().min(0).max(23),
+        digestEnabled: z.boolean(),
+        digestHour: z.number().int().min(0).max(23),
+        digestAccountId: z.string().nullable(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      if (input.digestAccountId) {
+        const acc = await ctx.db.account.findFirst({ where: { id: input.digestAccountId, userId: ctx.auth.id }, select: { id: true } });
+        if (!acc) throw new TRPCError({ code: "NOT_FOUND", message: "Mail account not found" });
+      }
+      await ctx.db.notificationSettings.upsert({ where: { userId: ctx.auth.id }, create: { userId: ctx.auth.id, ...input }, update: input });
+      await syncAllReminders(ctx.db, ctx.auth.id);
+    }),
+
+  subscribePush: protectedProcedure
+    .input(z.object({ endpoint: z.string().url().max(2000), p256dh: z.string().max(500), auth: z.string().max(200), userAgent: z.string().max(300).optional() }))
+    .mutation(async ({ ctx, input }) => {
+      if (!input.endpoint.startsWith("https://")) throw new TRPCError({ code: "BAD_REQUEST", message: "Invalid push endpoint" });
+      // An endpoint belongs to one browser profile; if another user had it, it moves to this one.
+      await ctx.db.pushSubscription.upsert({
+        where: { endpoint: input.endpoint },
+        create: { ...input, userId: ctx.auth.id },
+        update: { ...input, userId: ctx.auth.id },
+      });
+      await ctx.db.notificationSettings.upsert({ where: { userId: ctx.auth.id }, create: { userId: ctx.auth.id }, update: {} });
+    }),
+
+  unsubscribePush: protectedProcedure.input(z.object({ endpoint: z.string().max(2000) })).mutation(async ({ ctx, input }) => {
+    await ctx.db.pushSubscription.deleteMany({ where: { endpoint: input.endpoint, userId: ctx.auth.id } });
+  }),
+
+  removeDevice: protectedProcedure.input(z.object({ id: z.string() })).mutation(async ({ ctx, input }) => {
+    await ctx.db.pushSubscription.deleteMany({ where: { id: input.id, userId: ctx.auth.id } });
+  }),
+
+  testPush: protectedProcedure.mutation(async ({ ctx }) => {
+    const r = await sendPush(ctx.db, ctx.auth.id, {
+      title: "Reminders are on",
+      body: "This is how task reminders will look.",
+      url: "/tasks?view=today",
+      tag: "test",
+    });
+    if (!r.sent) throw new TRPCError({ code: "PRECONDITION_FAILED", message: r.reason ?? "No device received the test." });
+    return r;
+  }),
+
+  sendDigestNow: protectedProcedure.mutation(async ({ ctx }) => {
+    const s = await getNotificationSettings(ctx.db, ctx.auth.id);
+    try {
+      const r = await sendDigest(ctx.db, ctx.auth.id, zonedParts(new Date(), s.timezone).date, { force: true });
+      if (!r.sent) throw new Error(r.reason ?? "Not sent");
+      return r;
+    } catch (e) {
+      throw new TRPCError({ code: "PRECONDITION_FAILED", message: (e as Error).message });
+    }
+  }),
 
   // ── Email ─────────────────────────────────────────────────────────────
   forThread: protectedProcedure.input(z.object({ threadId: z.string() })).query(({ ctx, input }) =>

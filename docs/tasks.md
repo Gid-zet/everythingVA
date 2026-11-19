@@ -71,3 +71,27 @@ Modelled on [Todoist Karma](https://todoist.com/help/articles/introduction-to-ka
 - **Celebrations:** a points toast on each completion, confetti for goals and level-ups (none with reduced motion), and toasts for new badges. **Tasks → Progress** has the details, a 30-day chart and settings, including an off switch.
 
 Rules: `src/lib/tasks/gamification.ts` (unit-tested). Server: `src/server/tasks/rewards.ts`. Data: `TaskCompletion`, `ProductivitySettings`, `UserAchievement` (migration `20261118000000_connect_and_gamify`).
+
+## Reminders
+
+- **Push notifications:** a pop-up on each device you allow (Tasks → Reminders → *Turn on for this device*), even when everythingVA isn't open.
+  - Timed tasks remind you 30 minutes before by default.
+  - Tasks with only a date remind you at 9 AM on the day.
+  - Each task can override this: none, at the due time, 5 min to 1 day before.
+  - Clicking the notification opens the task.
+- **Morning email digest:** overdue, today and tomorrow, sent at 7 AM from your own connected mailbox to yourself. It's skipped when nothing is due. *Send today's digest now* sends one immediately.
+- **Time zone:** taken from your browser, so reminders keep the right local time, including across daylight saving.
+- **Recalculation:** reminder times update whenever a task's date, time, status or reminder changes. Completing or deleting a task cancels its reminder.
+
+### Setup
+
+1. **VAPID keys.** Generate them once: `npx web-push generate-vapid-keys`.
+   - In Vercel, add `VAPID_PUBLIC_KEY` and `VAPID_PRIVATE_KEY`, and optionally `VAPID_SUBJECT` (your site URL or a `mailto:` address).
+   - Keep the private key secret. Changing the keys means every device has to turn notifications on again.
+2. **CRON_SECRET.** It should already be set for discovery.
+3. **On-time reminders.** Vercel's free plan runs `/api/cron/reminders` once a day (12:00 UTC). That's enough for the digest, but push reminders would arrive late. For on-time reminders, either:
+   - use a free scheduler such as [cron-job.org](https://cron-job.org): `GET https://<your-domain>/api/cron/reminders` every 5 minutes, with the header `Authorization: Bearer <CRON_SECRET>`; or
+   - upgrade to Vercel Pro and change the schedule in `vercel.json` to `*/5 * * * *`.
+4. **iPhone/iPad.** Web push needs iOS 16.4+ and the site added to the Home Screen (Share → Add to Home Screen), then turned on from that icon.
+
+Code: `src/lib/tasks/reminders.ts` (timing and time zones, unit-tested), `src/server/tasks/notifications.ts` (push and digest), `src/app/api/cron/reminders/route.ts`, `public/sw.js` (service worker), `src/app/tasks/components/reminders-panel.tsx`.

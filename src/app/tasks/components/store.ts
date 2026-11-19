@@ -53,6 +53,14 @@ export function useTrpcTaskStore(): TaskStore {
   const patch = (fn: (tasks: Task[]) => Task[]) =>
     utils.tasks.list.setData(undefined, (old) => (old ? { ...old, tasks: fn(old.tasks) } : old));
 
+  // Reminders and the digest follow the browser's time zone.
+  const tzM = api.tasks.syncTimezone.useMutation();
+  React.useEffect(() => {
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    if (tz) tzM.mutate({ timezone: tz });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const createM = api.tasks.create.useMutation({ onError });
   const updateM = api.tasks.update.useMutation({
     onSuccess: ({ reward, ...t }) => {

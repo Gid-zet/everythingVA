@@ -3,7 +3,7 @@ import React from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
-import { ArrowRight, CalendarClock, CalendarDays, CalendarRange, CheckCircle2, Flame, Hash, Inbox, LayoutGrid, List, ListTodo, Loader2, Mail, Plus, Tag, Trophy, X } from "lucide-react";
+import { ArrowRight, Bell, CalendarClock, CalendarDays, CalendarRange, CheckCircle2, Flame, Hash, Inbox, LayoutGrid, List, ListTodo, Loader2, Mail, Plus, Tag, Trophy, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PageBanner, type BannerTone } from "@/components/page-banner";
 import { addDays } from "@/lib/tasks/recurrence";
@@ -17,19 +17,23 @@ import dynamic from "next/dynamic";
 import { ProgressCard } from "./progress-card";
 
 // The progress page carries a chart library; load it only when opened.
+const RemindersPanel = dynamic(() => import("./reminders-panel").then((m) => m.RemindersPanel), {
+  ssr: false,
+  loading: () => <Loader2 className="mx-auto mt-16 size-5 animate-spin text-muted-foreground" />,
+});
 const ProgressView = dynamic(() => import("./progress").then((m) => m.ProgressView), {
   ssr: false,
   loading: () => <Loader2 className="mx-auto mt-16 size-5 animate-spin text-muted-foreground" />,
 });
 import { localToday, type CreateInput, type Project, type Task, type TaskStore } from "./store";
 
-type View = { kind: "inbox" | "today" | "upcoming" | "all" | "completed" | "progress" } | { kind: "project"; id: string } | { kind: "label"; label: string };
+type View = { kind: "inbox" | "today" | "upcoming" | "all" | "completed" | "progress" | "reminders" } | { kind: "project"; id: string } | { kind: "label"; label: string };
 
 function readView(p: URLSearchParams): View {
   const v = p.get("view");
   if (v === "project" && p.get("id")) return { kind: "project", id: p.get("id")! };
   if (v === "label" && p.get("label")) return { kind: "label", label: p.get("label")! };
-  if (v === "inbox" || v === "upcoming" || v === "all" || v === "completed" || v === "progress") return { kind: v };
+  if (v === "inbox" || v === "upcoming" || v === "all" || v === "completed" || v === "progress" || v === "reminders") return { kind: v };
   return { kind: "today" };
 }
 const BaseContext = React.createContext("/tasks");
@@ -127,6 +131,9 @@ function TasksAppInner({ store }: { store: TaskStore }) {
     subtitle = "Last 14 days";
     const done = store.tasks.filter((t) => !isOpen(t)).sort((a, b) => String(b.completedAt ?? "").localeCompare(String(a.completedAt ?? "")));
     groups = [{ key: "done", label: "", tasks: done }];
+  } else if (view.kind === "reminders") {
+    title = "Reminders";
+    subtitle = "Push notifications before tasks are due, and a morning email digest";
   } else if (view.kind === "progress") {
     title = "Progress";
     subtitle = "Points, goals, streaks and achievements";
@@ -160,7 +167,7 @@ function TasksAppInner({ store }: { store: TaskStore }) {
             description={subtitle}
             live={store.updatedAt ? { updatedAt: store.updatedAt, refreshing: store.refreshing } : null}
             stats={
-              view.kind === "progress"
+              view.kind === "progress" || view.kind === "reminders"
                 ? undefined
                 : [
                     { label: view.kind === "completed" ? "Completed" : "In view", value: total },
@@ -213,13 +220,15 @@ function TasksAppInner({ store }: { store: TaskStore }) {
             />
           )}
 
-          {view.kind !== "completed" && view.kind !== "progress" && (
+          {view.kind !== "completed" && view.kind !== "progress" && view.kind !== "reminders" && (
             <div className="mb-6">
               <QuickAdd ref={quickAdd} projects={store.projects} defaults={defaults} onCreate={store.create} />
             </div>
           )}
 
-          {view.kind === "progress" ? (
+          {view.kind === "reminders" ? (
+            <RemindersPanel />
+          ) : view.kind === "progress" ? (
             <ProgressView data={productivity} store={store} />
           ) : store.loading ? (
             <Loader2 className="mx-auto mt-16 size-5 animate-spin text-muted-foreground" />
@@ -276,6 +285,7 @@ const VIEW_TONE: Record<View["kind"], BannerTone> = {
   all: "slate",
   completed: "emerald",
   progress: "sunset",
+  reminders: "violet",
   project: "ocean",
   label: "rose",
 };
@@ -286,6 +296,7 @@ const VIEW_ICON: Record<View["kind"], React.ElementType> = {
   all: ListTodo,
   completed: CheckCircle2,
   progress: Trophy,
+  reminders: Bell,
   project: Hash,
   label: Tag,
 };
@@ -361,6 +372,7 @@ function Empty({ view }: { view: View }) {
     project: ["No open tasks in this project", "Add one above, or press B for the board."],
     label: ["No open tasks with this label", ""],
     progress: ["", ""],
+    reminders: ["", ""],
   }[view.kind];
   return (
     <div className="flex flex-col items-center rounded-2xl border border-dashed px-6 py-14 text-center">
@@ -455,6 +467,7 @@ function Sidebar({
           <NavLink href={viewHref({ kind: "all" })} active={is("all")} chip="from-slate-500 to-slate-700" icon={<ListTodo className="size-4" />} label="All tasks" />
           <NavLink href={viewHref({ kind: "completed" })} active={is("completed")} chip="from-emerald-500 to-teal-600" icon={<CheckCircle2 className="size-4" />} label="Completed" />
           <NavLink href={viewHref({ kind: "progress" })} active={is("progress")} chip="from-orange-500 to-pink-600" icon={<Trophy className="size-4" />} label="Progress" />
+          <NavLink href={viewHref({ kind: "reminders" })} active={is("reminders")} chip="from-indigo-500 to-fuchsia-600" icon={<Bell className="size-4" />} label="Reminders" />
         </nav>
 
         <div className="px-2.5 pb-2">
@@ -538,6 +551,7 @@ function MobileNav({ view, projects }: { view: View; projects: Project[] }) {
     ["all", "All"],
     ["completed", "Done"],
     ["progress", "Progress"],
+    ["reminders", "Reminders"],
   ];
   return (
     <div className="flex gap-1.5 overflow-x-auto border-b px-4 py-2.5 md:hidden">
