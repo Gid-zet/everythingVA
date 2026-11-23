@@ -49,9 +49,11 @@ export function Mail({
   // Normalize tab value for comparison (handle "email setup" or "setup")
   const isSetupTab = tab === "accounts" || tab === "setup" || tab === "email setup";
 
-  // OAuth callbacks land on /mail?tab=accounts&connected=… → open the Accounts panel.
+  // OAuth callbacks land on /mail?tab=accounts&connected=… → open the Accounts panel;
+  // Leads links to /mail?tab=drafts&account=… after saving an outreach draft.
   React.useEffect(() => {
-    if (new URLSearchParams(window.location.search).get("tab") === "accounts") setTab("accounts");
+    const t = new URLSearchParams(window.location.search).get("tab");
+    if (t === "accounts" || t === "drafts") setTab(t);
   }, [setTab]);
   const tabTitle =
     tab === "drafts"

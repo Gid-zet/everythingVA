@@ -13,10 +13,10 @@ function useOpenThreadFromUrl() {
   React.useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const thread = params.get("thread");
-    if (!thread) return;
     const account = params.get("account");
+    if (!thread && !account) return;
     if (account) setAccountId(account);
-    setThreadId(thread);
+    if (thread) setThreadId(thread);
     window.history.replaceState(null, "", window.location.pathname);
   }, [setAccountId, setThreadId]);
 }
