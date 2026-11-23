@@ -1137,6 +1137,9 @@ model LeadProfile {
   roles            String[]
   /// Domains that are never leads (your own, partners, vendors).
   excludedDomains  String[]
+  /// Web prospecting budget: searches used on webSearchDay (YYYY-MM-DD, UTC).
+  webSearchDay     String?
+  webSearches      Int      @default(0)
   updatedAt        DateTime @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -1160,6 +1163,7 @@ enum LeadSource {
   form
   manual
   import
+  web
 }
 
 enum LeadFit {

@@ -7,6 +7,8 @@ import { parseCsv } from "@/server/procurement/csv";
 import { companyFromDomain, domainOf, FREE_EMAIL_DOMAINS, mapImportRows } from "@/lib/leads/candidates";
 import { existingLeadEmails, mailboxCandidates, mailboxStats, procurementCandidates, recentCorrespondence } from "@/server/leads/sources";
 import { paragraphsToHtml, qualifyLead, writeOutreach } from "@/server/leads/ai";
+import { enrichProspect, findCompanies, suggestQueries } from "@/server/leads/prospect";
+import { hunterConfigured, searchProvider } from "@/server/leads/web-search";
 
 const stage = z.enum(["new", "researching", "contacted", "replied", "meeting", "proposal", "won", "lost", "not_a_fit"]);
 const source = z.enum(["inbox", "procurement", "form", "manual", "import"]);
@@ -70,6 +72,33 @@ const candidateInput = z.object({
   source: z.enum(["inbox", "procurement"]),
   sourceRef: optStr(100),
   sourceDetail: optStr(300),
+});
+
+const today = () => new Date().toISOString().slice(0, 10);
+const dailyLimit = () => Math.max(1, Math.min(500, Number(process.env.WEB_SEARCH_DAILY_LIMIT) || 25));
+
+async function requireIcp(db: PrismaClient, userId: string) {
+  const profile = await db.leadProfile.findUnique({ where: { userId } });
+  if (!profile?.offer.trim() || !profile.idealCustomer.trim())
+    throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Describe what you sell and who buys it first (Ideal customer)." });
+  return profile;
+}
+
+const prospectInput = z.object({
+  domain: str(200).min(3),
+  url: z.string().url().max(500),
+  company: str(160),
+  summary: str(400),
+  industry: optStr(120),
+  location: optStr(160),
+  sizeHint: optStr(160),
+  phone: optStr(60),
+  linkedin: optStr(300),
+  score: z.number().int().min(0).max(100),
+  fit: z.enum(["strong", "possible", "poor"]),
+  reason: str(1500),
+  nextStep: str(300),
+  contacts: z.array(z.object({ name: optStr(160), title: optStr(160), email: email.nullish().transform((v) => v ?? null) })).max(8),
 });
 
 export const leadsRouter = createTRPCRouter({
@@ -295,4 +324,80 @@ export const leadsRouter = createTRPCRouter({
     await ctx.db.leadForm.deleteMany({ where: { id: input.id, userId: ctx.auth.id } });
     return { ok: true };
   }),
+  // ── Web prospecting ─────────────────────────────────────────────────────────
+  webStatus: protectedProcedure.query(async ({ ctx }) => {
+    const profile = await ctx.db.leadProfile.findUnique({ where: { userId: ctx.auth.id }, select: { webSearchDay: true, webSearches: true } });
+    const used = profile?.webSearchDay === today() ? profile.webSearches : 0;
+    return { provider: searchProvider(), hunter: hunterConfigured(), ai: isAiConfigured(), limit: dailyLimit(), remaining: Math.max(0, dailyLimit() - used) };
+  }),
+
+  suggestSearches: protectedProcedure.input(z.object({ brief: str(500).default("") })).mutation(async ({ ctx, input }) => {
+    if (!isAiConfigured()) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "AI isn't configured." });
+    const profile = await requireIcp(ctx.db, ctx.auth.id);
+    return suggestQueries(profile, input.brief);
+  }),
+
+  webSearch: protectedProcedure.input(z.object({ queries: z.array(str(200).min(2)).min(1).max(6) })).mutation(async ({ ctx, input }) => {
+    if (!searchProvider()) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Add SERPER_API_KEY or BRAVE_SEARCH_API_KEY to enable web search." });
+    const userId = ctx.auth.id;
+    const profile = await requireIcp(ctx.db, userId);
+    const used = profile.webSearchDay === today() ? profile.webSearches : 0;
+    if (used + input.queries.length > dailyLimit())
+      throw new TRPCError({ code: "TOO_MANY_REQUESTS", message: `Daily web search limit reached (${dailyLimit()} searches). It resets at midnight UTC.` });
+    await ctx.db.leadProfile.update({ where: { userId }, data: { webSearchDay: today(), webSearches: used + input.queries.length } });
+    const [accounts, leads] = await Promise.all([
+      ctx.db.account.findMany({ where: { userId }, select: { emailAddress: true } }),
+      ctx.db.lead.findMany({ where: { userId, domain: { not: null } }, select: { domain: true } }),
+    ]);
+    const exclude = new Set([...profile.excludedDomains, ...accounts.map((a) => domainOf(a.emailAddress)), ...leads.map((l) => l.domain!)].map((d) => d.toLowerCase()));
+    return findCompanies(input.queries, exclude);
+  }),
+
+  /** Reads up to 4 company websites and scores them (the client calls this in batches). */
+  researchCompanies: protectedProcedure.input(z.object({ domains: z.array(z.string().trim().toLowerCase().min(3).max(200)).min(1).max(4) })).mutation(async ({ ctx, input }) => {
+    if (!isAiConfigured()) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "AI isn't configured." });
+    const profile = await requireIcp(ctx.db, ctx.auth.id);
+    return Promise.all(input.domains.map((d) => enrichProspect(d, profile).catch(() => ({ domain: d, prospect: null, skipped: "Couldn't research this site" }))));
+  }),
+
+  importProspects: protectedProcedure.input(z.object({ prospects: z.array(prospectInput).min(1).max(50) })).mutation(async ({ ctx, input }) => {
+    const userId = ctx.auth.id;
+    const existing = await existingLeadEmails(ctx.db, userId);
+    let created = 0;
+    for (const p of input.prospects) {
+      const people = p.contacts.length ? p.contacts : [{ name: null, title: null, email: null }];
+      for (const c of people) {
+        if (c.email && existing.has(c.email)) continue;
+        if (c.email) existing.add(c.email);
+        const lead = await ctx.db.lead.create({
+          data: {
+            userId,
+            source: "web",
+            name: c.name,
+            title: c.title,
+            email: c.email,
+            company: p.company,
+            domain: p.domain,
+            website: p.url,
+            phone: p.phone,
+            location: p.location,
+            sourceRef: p.url,
+            sourceDetail: p.summary,
+            score: p.score,
+            fit: p.fit,
+            fitReason: p.reason,
+            nextStep: p.nextStep,
+            scoredAt: new Date(),
+            notes: [p.industry && `Industry: ${p.industry}`, p.sizeHint && `Size: ${p.sizeHint}`, p.linkedin && `LinkedIn: ${p.linkedin}`].filter(Boolean).join("\n") || null,
+            tags: p.industry ? [p.industry.slice(0, 80)] : [],
+          },
+          select: { id: true },
+        });
+        await log(ctx.db, lead.id, "created", `Found on the web: ${p.url}`.slice(0, 300));
+        created++;
+      }
+    }
+    return { created };
+  }),
 });
+

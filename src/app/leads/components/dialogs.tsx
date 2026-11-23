@@ -1,7 +1,8 @@
 "use client";
 import React from "react";
 import { toast } from "sonner";
-import { Check, Copy, FileInput, Inbox, Landmark, Loader2, Plus, Table2, Trash2 } from "lucide-react";
+import { Check, Copy, FileInput, Globe, Inbox, Landmark, Loader2, Plus, Table2, Trash2 } from "lucide-react";
+import { WebProspector } from "./web-prospector";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import type { Candidate, LeadForm, LeadsStore } from "./store";
@@ -22,16 +23,16 @@ function Shell({ open, onClose, title, desc, children, wide }: { open: boolean; 
   );
 }
 
-type Tab = "inbox" | "procurement" | "csv";
+type Tab = "web" | "inbox" | "procurement" | "csv";
 
-export function FindLeadsDialog({ store, open, onClose, onForms }: { store: LeadsStore; open: boolean; onClose: () => void; onForms: () => void }) {
-  const [tab, setTab] = React.useState<Tab>("inbox");
+export function FindLeadsDialog({ store, open, onClose, onForms, onProfile }: { store: LeadsStore; open: boolean; onClose: () => void; onForms: () => void; onProfile: () => void }) {
+  const [tab, setTab] = React.useState<Tab>("web");
   const [results, setResults] = React.useState<Partial<Record<Tab, Candidate[]>>>({});
   const [picked, setPicked] = React.useState<Set<string>>(new Set());
   const [busy, setBusy] = React.useState(false);
   const [csv, setCsv] = React.useState("");
 
-  const list = tab === "csv" ? undefined : results[tab];
+  const list = tab === "csv" || tab === "web" ? undefined : results[tab];
 
   async function scan(t: "inbox" | "procurement") {
     setBusy(true);
@@ -48,7 +49,7 @@ export function FindLeadsDialog({ store, open, onClose, onForms }: { store: Lead
   }
 
   async function importPicked() {
-    if (!list || tab === "csv") return;
+    if (!list || tab === "csv" || tab === "web") return;
     const chosen = list.filter((c) => picked.has(c.email));
     if (!chosen.length) return;
     setBusy(true);
@@ -90,13 +91,14 @@ export function FindLeadsDialog({ store, open, onClose, onForms }: { store: Lead
   }
 
   const tabs: { id: Tab; label: string; icon: React.ElementType }[] = [
+    { id: "web", label: "Web", icon: Globe },
     { id: "inbox", label: "Mailbox", icon: Inbox },
     { id: "procurement", label: "Tenders", icon: Landmark },
     { id: "csv", label: "Import CSV", icon: Table2 },
   ];
 
   return (
-    <Shell open={open} onClose={onClose} wide title="Find leads" desc="From data you already own. Nothing is scraped, bought or sent automatically.">
+    <Shell open={open} onClose={onClose} wide title="Find leads" desc="Search the web for companies that match your ideal customer, or start from people who already know you. Nothing is sent automatically.">
       <div className="flex flex-wrap gap-1 rounded-xl bg-muted p-0.5">
         {tabs.map(({ id, label, icon: Icon }) => (
           <button
@@ -112,7 +114,9 @@ export function FindLeadsDialog({ store, open, onClose, onForms }: { store: Lead
         </button>
       </div>
 
-      {tab === "csv" ? (
+      {tab === "web" ? (
+        <WebProspector store={store} onNeedProfile={onProfile} />
+      ) : tab === "csv" ? (
         <div className="space-y-2">
           <p className="text-[12px] text-muted-foreground">Paste a CSV with a header row. Recognised columns: Name, Email, Company, Title, Phone, Website, Location, Notes. Duplicates are skipped.</p>
           <textarea value={csv} onChange={(e) => setCsv(e.target.value)} rows={8} placeholder={"Name,Email,Company,Title\nDana Ruiz,dana@northwind.com,Northwind,Head of People"} className={cn(field, "font-mono text-[12px]")} />

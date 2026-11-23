@@ -15,6 +15,11 @@ export type CreateInput = RouterInputs["leads"]["create"];
 export type UpdateInput = RouterInputs["leads"]["update"];
 export type CandidateInput = RouterInputs["leads"]["importCandidates"]["candidates"][number];
 export type DraftResult = RouterOutputs["leads"]["draftOutreach"];
+export type WebStatus = RouterOutputs["leads"]["webStatus"];
+export type WebCompany = RouterOutputs["leads"]["webSearch"][number];
+export type Research = RouterOutputs["leads"]["researchCompanies"][number];
+export type Prospect = NonNullable<Research["prospect"]>;
+export type ProspectInput = RouterInputs["leads"]["importProspects"]["prospects"][number];
 
 /** Everything the leads screens need: the live tRPC store, or an in-memory one for previews. */
 export type LeadsStore = {
@@ -36,6 +41,11 @@ export type LeadsStore = {
   addFollowUp: (lead: Lead, dueDate: string) => Promise<void>;
   saveForm: (input: FormInput) => Promise<void>;
   deleteForm: (id: string) => void;
+  useWebStatus: () => WebStatus | undefined;
+  suggestSearches: (brief: string) => Promise<string[]>;
+  webSearch: (queries: string[]) => Promise<WebCompany[]>;
+  researchCompanies: (domains: string[]) => Promise<Research[]>;
+  importProspects: (p: ProspectInput[]) => Promise<{ created: number }>;
 };
 
 export const STAGES: { id: Stage; label: string; tone: string; dot: string }[] = [
@@ -52,7 +62,7 @@ export const STAGES: { id: Stage; label: string; tone: string; dot: string }[] =
 export const stageInfo = (s: Stage) => STAGES.find((x) => x.id === s)!;
 export const OPEN_STAGES: Stage[] = ["new", "researching", "contacted", "replied", "meeting", "proposal"];
 
-export const SOURCES: Record<Lead["source"], string> = { inbox: "Mailbox", procurement: "Tender", form: "Form", manual: "Added", import: "Import" };
+export const SOURCES: Record<Lead["source"], string> = { web: "Web", inbox: "Mailbox", procurement: "Tender", form: "Form", manual: "Added", import: "Import" };
 
 export function useTrpcLeadsStore(): LeadsStore {
   const utils = api.useUtils();
@@ -74,6 +84,10 @@ export function useTrpcLeadsStore(): LeadsStore {
   const formM = api.leads.saveForm.useMutation({ onError });
   const delFormM = api.leads.deleteForm.useMutation({ onError, onSettled: () => void invalidate() });
   const taskM = api.tasks.create.useMutation({ onError });
+  const suggestM = api.leads.suggestSearches.useMutation({ onError });
+  const searchM = api.leads.webSearch.useMutation({ onError, onSettled: () => void utils.leads.webStatus.invalidate() });
+  const researchM = api.leads.researchCompanies.useMutation();
+  const prospectsM = api.leads.importProspects.useMutation({ onError });
 
   return {
     data: q.data,
@@ -137,5 +151,15 @@ export function useTrpcLeadsStore(): LeadsStore {
       await invalidate();
     },
     deleteForm: (id) => delFormM.mutate({ id }),
+    // eslint-disable-next-line react-hooks/rules-of-hooks
+    useWebStatus: () => api.leads.webStatus.useQuery(undefined, { staleTime: 30_000 }).data,
+    suggestSearches: (brief) => suggestM.mutateAsync({ brief }),
+    webSearch: (queries) => searchM.mutateAsync({ queries }),
+    researchCompanies: (domains) => researchM.mutateAsync({ domains }),
+    importProspects: async (prospects) => {
+      const r = await prospectsM.mutateAsync({ prospects });
+      await invalidate();
+      return r;
+    },
   };
 }

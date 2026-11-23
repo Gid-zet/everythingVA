@@ -7,6 +7,7 @@ import {
   ArrowRight,
   Columns3,
   FileInput,
+  Globe,
   Inbox,
   Landmark,
   List as ListIcon,
@@ -285,7 +286,7 @@ export function LeadsApp({ store }: { store: LeadsStore }) {
       </main>
 
       <LeadSheet store={store} lead={lead} onClose={() => setOpenId(null)} onQualify={(id) => qualify([id])} qualifying={qualifying} />
-      <FindLeadsDialog store={store} open={dialog === "find"} onClose={() => setDialog(null)} onForms={() => setDialog("forms")} />
+      <FindLeadsDialog store={store} open={dialog === "find"} onClose={() => setDialog(null)} onForms={() => setDialog("forms")} onProfile={() => setDialog("profile")} />
       <ProfileDialog store={store} open={dialog === "profile"} onClose={() => setDialog(null)} />
       <FormsDialog store={store} open={dialog === "forms"} onClose={() => setDialog(null)} />
       <AddLeadDialog store={store} open={dialog === "add"} onClose={() => setDialog(null)} onCreated={(id) => setOpenId(id)} />
@@ -351,6 +352,7 @@ function Board({ leads, onOpen, onMove }: { leads: Lead[]; onOpen: (id: string) 
 
 function EmptyState({ onFind, onForms }: { onFind: () => void; onForms: () => void }) {
   const tiles = [
+    { icon: Globe, tone: "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300", t: "The web", d: "Companies matching your ideal customer, researched and scored from their own sites.", on: onFind },
     { icon: Inbox, tone: "bg-sky-100 text-sky-700 dark:bg-sky-500/15 dark:text-sky-300", t: "Your mailbox", d: "People you already talk to, ranked by how warm the conversation is.", on: onFind },
     { icon: Landmark, tone: "bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300", t: "Tenders you track", d: "Buyer contacts named on procurement notices.", on: onFind },
     { icon: FileInput, tone: "bg-violet-100 text-violet-700 dark:bg-violet-500/15 dark:text-violet-300", t: "An enquiry form", d: "Share a link; submissions arrive here with consent and campaign source.", on: onForms },
@@ -359,8 +361,8 @@ function EmptyState({ onFind, onForms }: { onFind: () => void; onForms: () => vo
     <div className="rounded-2xl border border-dashed px-6 py-12 text-center">
       <Users className="mx-auto size-6 text-muted-foreground/60" />
       <p className="mt-3 text-sm font-medium">No leads yet</p>
-      <p className="mx-auto mt-1 max-w-md text-sm text-muted-foreground">Start with people who already know you. Nothing is scraped and nothing is sent without you.</p>
-      <div className="mx-auto mt-6 grid max-w-3xl gap-2.5 text-left sm:grid-cols-3">
+      <p className="mx-auto mt-1 max-w-md text-sm text-muted-foreground">Find companies that match your ideal customer, or start with people who already know you. Nothing is sent without you.</p>
+      <div className="mx-auto mt-6 grid max-w-3xl gap-2.5 text-left sm:grid-cols-2">
         {tiles.map(({ icon: Icon, tone, t, d, on }) => (
           <button key={t} onClick={on} className="rounded-2xl bg-card p-3.5 ring-1 ring-border transition hover:ring-foreground/20">
             <span className={cn("flex size-8 items-center justify-center rounded-lg", tone)}>
@@ -427,7 +429,7 @@ function Sidebar({
               { kind: "source", source: s },
               SOURCES[s],
               leads.filter((l) => l.source === s).length,
-              s === "inbox" ? <Inbox className="size-4" /> : s === "procurement" ? <Landmark className="size-4" /> : s === "form" ? <FileInput className="size-4" /> : s === "import" ? <ListIcon className="size-4" /> : <Plus className="size-4" />,
+              s === "web" ? <Globe className="size-4" /> : s === "inbox" ? <Inbox className="size-4" /> : s === "procurement" ? <Landmark className="size-4" /> : s === "form" ? <FileInput className="size-4" /> : s === "import" ? <ListIcon className="size-4" /> : <Plus className="size-4" />,
             ),
           )}
         </nav>
