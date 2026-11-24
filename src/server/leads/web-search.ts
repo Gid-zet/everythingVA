@@ -18,8 +18,13 @@ export const searchProvider = () =>
 const TAVILY_EXCLUDE = ["linkedin.com", "facebook.com", "instagram.com", "x.com", "twitter.com", "yelp.com", "youtube.com", "wikipedia.org", "glassdoor.com", "indeed.com"];
 export const hunterConfigured = () => !!process.env.HUNTER_API_KEY;
 
-export async function searchWeb(q: string, count = 10): Promise<SearchHit[]> {
+/**
+ * Search, optionally limited to some sites (Tavily filters natively; Serper and
+ * Brave get site: operators).
+ */
+export async function searchWeb(q: string, count = 10, onlySites: string[] = []): Promise<SearchHit[]> {
   const provider = searchProvider();
+  if (onlySites.length && provider !== "tavily") q = `${q} (${onlySites.map((d) => `site:${d}`).join(" OR ")})`;
   if (provider === "serper") {
     const res = await fetch("https://google.serper.dev/search", {
       method: "POST",
@@ -45,7 +50,7 @@ export async function searchWeb(q: string, count = 10): Promise<SearchHit[]> {
       method: "POST",
       headers: { Authorization: `Bearer ${process.env.TAVILY_API_KEY}`, "Content-Type": "application/json" },
       // Basic depth costs 1 credit per search.
-      body: JSON.stringify({ query: q, max_results: Math.min(20, count), search_depth: "basic", topic: "general", exclude_domains: TAVILY_EXCLUDE }),
+      body: JSON.stringify({ query: q, max_results: Math.min(20, count), search_depth: "basic", topic: "general", ...(onlySites.length ? { include_domains: onlySites } : { exclude_domains: TAVILY_EXCLUDE }) }),
       signal: AbortSignal.timeout(15_000),
     });
     if (!res.ok) throw new Error(`Search failed (${res.status})`);

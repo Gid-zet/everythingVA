@@ -103,6 +103,17 @@ export type CrawledSite = {
   blockedByRobots: boolean;
 };
 
+/** One public page, if robots.txt allows it (null when blocked or unreadable). */
+export async function fetchAllowed(url: string) {
+  try {
+    if (!(await allowed(url))) return { blocked: true as const };
+  } catch {
+    return null;
+  }
+  const page = await safeFetch(url);
+  return page ? { blocked: false as const, ...page } : null;
+}
+
 /** Homepage plus up to two contact/about/team pages of one company website. */
 export async function crawlSite(domainOrUrl: string): Promise<CrawledSite | null> {
   const start = /^https?:\/\//i.test(domainOrUrl) ? domainOrUrl : `https://${domainOrUrl}/`;
