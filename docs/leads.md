@@ -9,7 +9,7 @@ Lead generation built from data you already own, modelled on the best open-sourc
 | Capture UTM / referrer on forms so you know which campaign brought a lead | medius/utm_form (MIT) |
 
 ## Sources
-- **Web search** (Find leads → Web): AI turns your ideal customer into search queries, a search API (Serper or Brave) finds company websites, and a crawler reads each site's homepage plus up to two contact/about/team pages. AI extracts the company, named people and a fit verdict with reasons. Emails are kept only if they are printed on the site (or returned by the optional Hunter lookup), and the email domain is checked for MX records.
+- **Web search** (Find leads → Web): AI turns your ideal customer into search queries, a search API (Tavily, Serper or Brave) finds company websites, and a crawler reads each site's homepage plus up to two contact/about/team pages. AI extracts the company, named people and a fit verdict with reasons. Emails are kept only if they are printed on the site (or returned by the optional Hunter lookup), and the email domain is checked for MX records.
   - Crawler rules: identifies itself (`EverythingVA-LeadFinder`), honours robots.txt, public http(s) only, refuses private/internal addresses at every redirect (SSRF guard), 8 s and 1.5 MB per page, never logs in or submits forms.
   - Skipped on purpose: LinkedIn, Facebook, Instagram, X, Google Maps, Yelp, directories, job boards, news and government sites. Their terms forbid scraping or they aren't the prospect's own site.
   - Budget: `WEB_SEARCH_DAILY_LIMIT` searches per user per day (default 25).
@@ -26,7 +26,7 @@ Lead generation built from data you already own, modelled on the best open-sourc
 ## Configuration
 | Variable | Purpose |
 | --- | --- |
-| `SERPER_API_KEY` or `BRAVE_SEARCH_API_KEY` | Web search (one is required for the Web tab) |
+| `TAVILY_API_KEY`, `SERPER_API_KEY` or `BRAVE_SEARCH_API_KEY` | Web search (one is required for the Web tab). Tavily: 1,000 free searches a month, no card |
 | `HUNTER_API_KEY` | Optional: published work emails when a site lists none |
 | `WEB_SEARCH_DAILY_LIMIT` | Optional: searches per user per day (default 25) |
 

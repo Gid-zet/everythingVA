@@ -338,7 +338,7 @@ export const leadsRouter = createTRPCRouter({
   }),
 
   webSearch: protectedProcedure.input(z.object({ queries: z.array(str(200).min(2)).min(1).max(6) })).mutation(async ({ ctx, input }) => {
-    if (!searchProvider()) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Add SERPER_API_KEY or BRAVE_SEARCH_API_KEY to enable web search." });
+    if (!searchProvider()) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Add TAVILY_API_KEY, SERPER_API_KEY or BRAVE_SEARCH_API_KEY to enable web search." });
     const userId = ctx.auth.id;
     const profile = await requireIcp(ctx.db, userId);
     const used = profile.webSearchDay === today() ? profile.webSearches : 0;
