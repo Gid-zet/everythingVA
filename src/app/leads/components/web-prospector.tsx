@@ -51,6 +51,9 @@ export function WebProspector({ store, onNeedProfile }: { store: LeadsStore; onN
           <li>
             <code className="rounded bg-background px-1.5 py-0.5">BRAVE_SEARCH_API_KEY</code> from brave.com/search/api (independent index)
           </li>
+          <li>
+            <code className="rounded bg-background px-1.5 py-0.5">TAVILY_API_KEY</code> from tavily.com (1,000 free searches a month, no card)
+          </li>
           <li className="text-muted-foreground">
             Optional: <code className="rounded bg-background px-1.5 py-0.5">HUNTER_API_KEY</code> finds published work emails when a site lists none.
           </li>

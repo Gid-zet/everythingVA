@@ -46,6 +46,7 @@ export const env = createEnv({
     // Leads: web prospecting (see docs/leads.md)
     SERPER_API_KEY: z.string().min(1).optional(),
     BRAVE_SEARCH_API_KEY: z.string().min(1).optional(),
+    TAVILY_API_KEY: z.string().min(1).optional(),
     HUNTER_API_KEY: z.string().min(1).optional(),
     WEB_SEARCH_DAILY_LIMIT: z.coerce.number().int().min(1).max(500).optional(),
     // Task reminders (Web Push). Generate with: npx web-push generate-vapid-keys
@@ -100,6 +101,7 @@ export const env = createEnv({
     SAM_GOV_API_KEY: process.env.SAM_GOV_API_KEY,
     SERPER_API_KEY: process.env.SERPER_API_KEY,
     BRAVE_SEARCH_API_KEY: process.env.BRAVE_SEARCH_API_KEY,
+    TAVILY_API_KEY: process.env.TAVILY_API_KEY,
     HUNTER_API_KEY: process.env.HUNTER_API_KEY,
     WEB_SEARCH_DAILY_LIMIT: process.env.WEB_SEARCH_DAILY_LIMIT,
     SAM_GOV_MAX_REQUESTS: process.env.SAM_GOV_MAX_REQUESTS,
