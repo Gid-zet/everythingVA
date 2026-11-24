@@ -13,7 +13,7 @@ import {
   Trash2,
   MailMinus,
   Star,
-  ShieldAlert, Landmark, ListTodo, Magnet } from "lucide-react";
+  ShieldAlert, Briefcase, Landmark, ListTodo, Magnet } from "lucide-react";
 
 import { useLocalStorage } from "usehooks-ts";
 import { api } from "@/trpc/react";
@@ -58,6 +58,7 @@ const SideBar = ({ isCollapsed }: Props) => {
           { title: "Tasks", icon: ListTodo, active: false, href: "/tasks" },
           { title: "Procurement", icon: Landmark, active: false, href: "/procurement" },
           { title: "Leads", icon: Magnet, active: false, href: "/leads" },
+          { title: "Jobs", icon: Briefcase, active: false, href: "/jobs" },
           {
             title: "Accounts",
             tab: "accounts",

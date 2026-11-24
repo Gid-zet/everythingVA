@@ -40,9 +40,12 @@ model User {
   pushSubscriptions    PushSubscription[]
   notificationSettings NotificationSettings?
 
-  leads       Lead[]
-  leadProfile LeadProfile?
-  leadForms   LeadForm[]
+  leads          Lead[]
+  leadProfile    LeadProfile?
+  leadForms      LeadForm[]
+  jobs           JobApplication[]
+  jobProfile     JobProfile?
+  jobDiscoveries JobDiscovery[]
 }
 
 enum Role {
@@ -103,7 +106,7 @@ model Account {
   lastSyncedAt  DateTime?
   createdAt     DateTime      @default(now())
 
-  user           User           @relation(fields: [userId], references: [id])
+  user           User            @relation(fields: [userId], references: [id])
   threads        Thread[]
   emailAddresses EmailAddress[]
   calendars      Calendar[]
@@ -173,6 +176,8 @@ model Thread {
 
   emails Email[]
 
+  tasks Task[]
+
   @@index([accountId])
   @@index([done])
   @@index([inboxStatus])
@@ -184,8 +189,6 @@ model Thread {
   @@index([accountId, snoozedUntil])
   // Folder lists filter by account and sort by newest message.
   @@index([accountId, lastMessageDate(sort: Desc)])
-
-  tasks Task[]
 }
 
 model Email {
@@ -547,7 +550,6 @@ enum ExceptionType {
   DELETED // Deleted occurrence (excluded from series)
   ADDED // Custom added date (outside RRULE pattern)
 }
-
 
 /// Organizer rule (modelled on Inbox Zero): optional static patterns plus
 /// optional plain-English AI instructions, combined with AND / OR. Matching
@@ -1005,11 +1007,11 @@ model Task {
   user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
   opportunity Opportunity?     @relation(fields: [opportunityId], references: [id], onDelete: SetNull)
   completions TaskCompletion[]
-  project  TaskProject?   @relation(fields: [projectId], references: [id], onDelete: SetNull)
-  parent   Task?          @relation("Subtasks", fields: [parentId], references: [id], onDelete: Cascade)
-  subtasks Task[]         @relation("Subtasks")
-  thread   Thread?        @relation(fields: [threadId], references: [id], onDelete: SetNull)
-  activity TaskActivity[]
+  project     TaskProject?     @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  parent      Task?            @relation("Subtasks", fields: [parentId], references: [id], onDelete: Cascade)
+  subtasks    Task[]           @relation("Subtasks")
+  thread      Thread?          @relation(fields: [threadId], references: [id], onDelete: SetNull)
+  activity    TaskActivity[]
 
   @@unique([userId, number])
   @@index([userId, status])
@@ -1129,18 +1131,18 @@ model NotificationSettings {
 
 /// What you sell and who buys it (the ideal customer profile).
 model LeadProfile {
-  userId           String   @id
-  offer            String   @db.Text
-  idealCustomer    String   @db.Text
-  industries       String[]
-  regions          String[]
-  roles            String[]
+  userId          String   @id
+  offer           String   @db.Text
+  idealCustomer   String   @db.Text
+  industries      String[]
+  regions         String[]
+  roles           String[]
   /// Domains that are never leads (your own, partners, vendors).
-  excludedDomains  String[]
+  excludedDomains String[]
   /// Web prospecting budget: searches used on webSearchDay (YYYY-MM-DD, UTC).
-  webSearchDay     String?
-  webSearches      Int      @default(0)
-  updatedAt        DateTime @updatedAt
+  webSearchDay    String?
+  webSearches     Int      @default(0)
+  updatedAt       DateTime @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
@@ -1173,39 +1175,39 @@ enum LeadFit {
 }
 
 model Lead {
-  id              String     @id @default(cuid())
-  userId          String
-  name            String?
-  email           String?
-  title           String?
-  company         String?
-  domain          String?
-  website         String?
-  phone           String?
-  location        String?
-  source          LeadSource
+  id            String     @id @default(cuid())
+  userId        String
+  name          String?
+  email         String?
+  title         String?
+  company       String?
+  domain        String?
+  website       String?
+  phone         String?
+  location      String?
+  source        LeadSource
   /// Where it came from: thread id, opportunity id or form id.
-  sourceRef       String?
-  sourceDetail    String?
-  stage           LeadStage  @default(new)
-  score           Int?
-  fit             LeadFit?
-  fitReason       String?    @db.Text
-  nextStep        String?
-  scoredAt        DateTime?
-  notes           String?    @db.Text
-  tags            String[]
+  sourceRef     String?
+  sourceDetail  String?
+  stage         LeadStage  @default(new)
+  score         Int?
+  fit           LeadFit?
+  fitReason     String?    @db.Text
+  nextStep      String?
+  scoredAt      DateTime?
+  notes         String?    @db.Text
+  tags          String[]
   /// Messages exchanged with this person, from the mailbox scan.
-  emailsIn        Int        @default(0)
-  emailsOut       Int        @default(0)
-  lastContactAt   DateTime?
-  doNotContact    Boolean    @default(false)
+  emailsIn      Int        @default(0)
+  emailsOut     Int        @default(0)
+  lastContactAt DateTime?
+  doNotContact  Boolean    @default(false)
   /// Form leads: they ticked the consent box.
-  consent         Boolean    @default(false)
+  consent       Boolean    @default(false)
   /// utm_source / utm_medium / utm_campaign / referrer for form leads.
-  attribution     Json?
-  createdAt       DateTime   @default(now())
-  updatedAt       DateTime   @updatedAt
+  attribution   Json?
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
 
   user     User           @relation(fields: [userId], references: [id], onDelete: Cascade)
   activity LeadActivity[]
@@ -1244,4 +1246,135 @@ model LeadForm {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+}
+
+// ── Job search tracker ─────────────────────────────────────────────────────
+// Pipeline like Huntr, match scoring like Teal, AI CV tailoring and cover
+// letters like JobSync / OpenApply, mailbox status detection like JobOps.
+
+/// The user's master CV and what they're looking for.
+model JobProfile {
+  userId           String    @id
+  resumeText       String    @db.Text
+  resumeName       String?
+  headline         String?
+  targetRoles      String[]
+  locations        String[]
+  /// Daily job discovery
+  discoverEnabled  Boolean   @default(true)
+  remoteOnly       Boolean   @default(false)
+  discoverDay      String?
+  discoverRuns     Int       @default(0)
+  lastDiscoveredAt DateTime?
+  updatedAt        DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+enum JobStage {
+  saved
+  applied
+  screening
+  interview
+  offer
+  accepted
+  rejected
+  withdrawn
+}
+
+model JobApplication {
+  id               String    @id @default(cuid())
+  userId           String
+  title            String
+  company          String
+  companyDomain    String?
+  location         String?
+  workMode         String?
+  salary           String?
+  url              String?
+  source           String?
+  description      String?   @db.Text
+  stage            JobStage  @default(saved)
+  /// 0-5, how much you want it (Huntr's excitement stars)
+  excitement       Int       @default(0)
+  appliedAt        DateTime?
+  deadline         DateTime?
+  nextAction       String?
+  nextActionAt     DateTime?
+  matchScore       Int?
+  matchSummary     String?   @db.Text
+  keywordsMatched  String[]
+  keywordsMissing  String[]
+  scoredAt         DateTime?
+  notes            String?   @db.Text
+  contactName      String?
+  contactEmail     String?
+  /// Email threads linked to this application
+  threadIds        String[]
+  /// Inbox suggestions the user dismissed
+  ignoredThreadIds String[]
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  documents JobDocument[]
+  activity  JobActivity[]
+
+  @@index([userId, stage])
+  @@index([userId, updatedAt])
+}
+
+/// AI-tailored CV, cover letter or interview prep for one application (editable).
+model JobDocument {
+  id        String   @id @default(cuid())
+  jobId     String
+  kind      String
+  title     String
+  content   String   @db.Text
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  job JobApplication @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@index([jobId])
+}
+
+model JobActivity {
+  id        String   @id @default(cuid())
+  jobId     String
+  action    String
+  summary   String
+  createdAt DateTime @default(now())
+
+  job JobApplication @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@index([jobId, createdAt])
+}
+
+/// Openings found automatically; they wait here until saved to the pipeline or dismissed.
+model JobDiscovery {
+  id              String    @id @default(cuid())
+  userId          String
+  url             String
+  source          String
+  title           String
+  company         String
+  location        String?
+  workMode        String?
+  salary          String?
+  description     String?   @db.Text
+  postedAt        DateTime?
+  closesAt        DateTime?
+  matchScore      Int?
+  matchSummary    String?   @db.Text
+  keywordsMatched String[]
+  keywordsMissing String[]
+  /// new | saved | dismissed
+  status          String    @default("new")
+  createdAt       DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, url])
+  @@index([userId, status, createdAt])
 }
