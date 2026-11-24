@@ -4,13 +4,18 @@ import "server-only";
  * Web search providers for prospecting. Configure one:
  *   SERPER_API_KEY        serper.dev (Google results)
  *   BRAVE_SEARCH_API_KEY  api.search.brave.com (independent index)
+ *   TAVILY_API_KEY        tavily.com (1,000 free searches a month, no card)
  * Optional enrichment:
  *   HUNTER_API_KEY        hunter.io domain search (published work emails)
  */
 
 export type SearchHit = { url: string; title: string; snippet: string };
 
-export const searchProvider = () => (process.env.SERPER_API_KEY ? "serper" : process.env.BRAVE_SEARCH_API_KEY ? "brave" : null);
+export const searchProvider = () =>
+  process.env.SERPER_API_KEY ? "serper" : process.env.BRAVE_SEARCH_API_KEY ? "brave" : process.env.TAVILY_API_KEY ? "tavily" : null;
+
+/** Never the prospect's own site, and their terms forbid scraping. */
+const TAVILY_EXCLUDE = ["linkedin.com", "facebook.com", "instagram.com", "x.com", "twitter.com", "yelp.com", "youtube.com", "wikipedia.org", "glassdoor.com", "indeed.com"];
 export const hunterConfigured = () => !!process.env.HUNTER_API_KEY;
 
 export async function searchWeb(q: string, count = 10): Promise<SearchHit[]> {
@@ -34,6 +39,18 @@ export async function searchWeb(q: string, count = 10): Promise<SearchHit[]> {
     if (!res.ok) throw new Error(`Search failed (${res.status})`);
     const json = (await res.json()) as { web?: { results?: { url: string; title?: string; description?: string }[] } };
     return (json.web?.results ?? []).map((r) => ({ url: r.url, title: r.title ?? "", snippet: (r.description ?? "").replace(/<[^>]+>/g, "") }));
+  }
+  if (provider === "tavily") {
+    const res = await fetch("https://api.tavily.com/search", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${process.env.TAVILY_API_KEY}`, "Content-Type": "application/json" },
+      // Basic depth costs 1 credit per search.
+      body: JSON.stringify({ query: q, max_results: Math.min(20, count), search_depth: "basic", topic: "general", exclude_domains: TAVILY_EXCLUDE }),
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!res.ok) throw new Error(`Search failed (${res.status})`);
+    const json = (await res.json()) as { results?: { url: string; title?: string; content?: string }[] };
+    return (json.results ?? []).map((r) => ({ url: r.url, title: r.title ?? "", snippet: (r.content ?? "").slice(0, 400) }));
   }
   throw new Error("No web search provider is configured.");
 }
