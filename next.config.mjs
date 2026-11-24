@@ -23,7 +23,8 @@ const nextConfig = {
   async headers() {
     return [
       {
-        source: "/:path*",
+        // Everything except the public enquiry form, which is meant to be embedded.
+        source: "/((?!lead-form/).*)",
         headers: [
           { key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains; preload" },
           { key: "X-Content-Type-Options", value: "nosniff" },
@@ -33,6 +34,16 @@ const nextConfig = {
           // Frames and plugins only; a full script/style policy needs nonces
           // because email HTML and the editor inject inline styles.
           { key: "Content-Security-Policy", value: "frame-ancestors 'self'; object-src 'none'; base-uri 'self'; form-action 'self' https:" },
+        ],
+      },
+      {
+        source: "/lead-form/:path*",
+        headers: [
+          { key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains; preload" },
+          { key: "X-Content-Type-Options", value: "nosniff" },
+          { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+          { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=(), payment=(), usb=()" },
+          { key: "Content-Security-Policy", value: "frame-ancestors *; object-src 'none'; base-uri 'self'; form-action 'self'" },
         ],
       },
     ];

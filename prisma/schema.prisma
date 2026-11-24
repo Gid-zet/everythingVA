@@ -39,6 +39,10 @@ model User {
 
   pushSubscriptions    PushSubscription[]
   notificationSettings NotificationSettings?
+
+  leads       Lead[]
+  leadProfile LeadProfile?
+  leadForms   LeadForm[]
 }
 
 enum Role {
@@ -1116,4 +1120,128 @@ model NotificationSettings {
   lastDigestDate         String?
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// ─── Leads (prospecting) ────────────────────────────────────────────────────
+// Ideal-customer profile → leads from your mailbox, procurement contacts, an
+// inbound form or import → AI fit verdict with the reason → drafted outreach
+// you send yourself. See docs/leads.md.
+
+/// What you sell and who buys it (the ideal customer profile).
+model LeadProfile {
+  userId           String   @id
+  offer            String   @db.Text
+  idealCustomer    String   @db.Text
+  industries       String[]
+  regions          String[]
+  roles            String[]
+  /// Domains that are never leads (your own, partners, vendors).
+  excludedDomains  String[]
+  /// Web prospecting budget: searches used on webSearchDay (YYYY-MM-DD, UTC).
+  webSearchDay     String?
+  webSearches      Int      @default(0)
+  updatedAt        DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+enum LeadStage {
+  new
+  researching
+  contacted
+  replied
+  meeting
+  proposal
+  won
+  lost
+  not_a_fit
+}
+
+enum LeadSource {
+  inbox
+  procurement
+  form
+  manual
+  import
+  web
+}
+
+enum LeadFit {
+  strong
+  possible
+  poor
+}
+
+model Lead {
+  id              String     @id @default(cuid())
+  userId          String
+  name            String?
+  email           String?
+  title           String?
+  company         String?
+  domain          String?
+  website         String?
+  phone           String?
+  location        String?
+  source          LeadSource
+  /// Where it came from: thread id, opportunity id or form id.
+  sourceRef       String?
+  sourceDetail    String?
+  stage           LeadStage  @default(new)
+  score           Int?
+  fit             LeadFit?
+  fitReason       String?    @db.Text
+  nextStep        String?
+  scoredAt        DateTime?
+  notes           String?    @db.Text
+  tags            String[]
+  /// Messages exchanged with this person, from the mailbox scan.
+  emailsIn        Int        @default(0)
+  emailsOut       Int        @default(0)
+  lastContactAt   DateTime?
+  doNotContact    Boolean    @default(false)
+  /// Form leads: they ticked the consent box.
+  consent         Boolean    @default(false)
+  /// utm_source / utm_medium / utm_campaign / referrer for form leads.
+  attribution     Json?
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  user     User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  activity LeadActivity[]
+
+  @@unique([userId, email])
+  @@index([userId, stage])
+  @@index([userId, score])
+}
+
+model LeadActivity {
+  id        String   @id @default(cuid())
+  leadId    String
+  action    String
+  summary   String
+  createdAt DateTime @default(now())
+
+  lead Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@index([leadId, createdAt])
+}
+
+/// A public enquiry form (shareable link or embed) that creates leads.
+model LeadForm {
+  id          String   @id @default(cuid())
+  userId      String
+  title       String
+  intro       String?  @db.Text
+  thankYou    String?
+  askCompany  Boolean  @default(true)
+  askPhone    Boolean  @default(false)
+  askMessage  Boolean  @default(true)
+  active      Boolean  @default(true)
+  submissions Int      @default(0)
+  createdAt   DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
