@@ -1,7 +1,7 @@
 import React from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { Bricolage_Grotesque, Instrument_Serif } from "next/font/google";
+import localFont from "next/font/local";
 import { Check, KeyRound, LockKeyhole, Unplug } from "lucide-react";
 import { LoginLink, RegisterLink } from "@kinde-oss/kinde-auth-nextjs/components";
 
@@ -15,8 +15,21 @@ import { KeyboardDemo } from "@/components/landing/keyboard-demo";
 import { cn } from "@/lib/utils";
 import { FREE_ACCOUNTS_PER_USER, FREE_CREDITS_PER_DAY, PRO_ACCOUNTS_PER_USER } from "@/app/constants";
 
-const display = Bricolage_Grotesque({ subsets: ["latin"], variable: "--font-display", display: "swap" });
-const serif = Instrument_Serif({ subsets: ["latin"], weight: "400", variable: "--font-serif", display: "swap" });
+// Bundled from @fontsource rather than fetched from Google Fonts during the build.
+const display = localFont({
+  src: "../../node_modules/@fontsource-variable/bricolage-grotesque/files/bricolage-grotesque-latin-wght-normal.woff2",
+  weight: "200 800",
+  variable: "--font-display",
+  display: "swap",
+  fallback: ["system-ui", "sans-serif"],
+});
+const serif = localFont({
+  src: "../../node_modules/@fontsource/instrument-serif/files/instrument-serif-latin-400-normal.woff2",
+  weight: "400",
+  variable: "--font-serif",
+  display: "swap",
+  fallback: ["Georgia", "serif"],
+});
 
 const primaryBtn =
   "inline-flex h-11 items-center justify-center rounded-[14px] bg-white px-5 text-[14px] font-semibold text-black transition-all hover:bg-white/90 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60 focus-visible:ring-offset-2 focus-visible:ring-offset-black";
